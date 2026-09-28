@@ -1,205 +1,280 @@
 # 🥭 Maracumango — Sistema de Gestión y Ventas
 
-Sistema web integral de comercio electrónico y gestión operativa para **Maracumango** en Neiva, Huila. Diseñado para ofrecer una experiencia fluida a los clientes al explorar el catálogo de granizados, micheladas y helados artesanales, junto con paneles dedicados para la operación de los trabajadores en cada sede y la administración central del negocio.
+Sistema web desarrollado para **Maracumango**, negocio ubicado en Neiva, Huila. La plataforma integra un catálogo digital para clientes y herramientas de gestión para trabajadores y administradores.
+
+El proyecto busca facilitar la gestión de pedidos, productos, sedes y operaciones diarias del negocio desde una sola plataforma.
 
 ---
 
-## 📌 Descripción General
+## 📌 Descripción
 
-**Maracumango** es una plataforma completa que combina:
-1. **Tienda y Menú Digital para Clientes:** Permite explorar productos artesanales por categorías, personalizar adiciones/ingredientes, armar pedidos en el carrito y enviarlos para entrega o retiro.
-2. **Panel Operativo para Trabajadores:** Facilita a los operarios de cada sede visualizar comandas en tiempo real y gestionar el ciclo de vida de los pedidos (Pendiente → En Preparación → Listo → Entregado).
-3. **Panel Administrativo:** Permite a los administradores gestionar el catálogo de productos, categorías, ingredientes, sedes, personal de trabajo, reportes de ventas y configuraciones comerciales.
+Maracumango cuenta con tres áreas principales:
 
----
-
-## 🚀 Funcionalidades Principales
-
-### 🛍️ Menú y Experiencia del Cliente
-- **Catálogo Interactivo:** Exploración de productos organizados por categorías (Granizados, Micheladas, Helados Artesanales, etc.).
-- **Detalle y Personalización:** Selección de ingredientes, adiciones y notas especiales para la preparación.
-- **Carrito de Compras:** Gestión ágil de cantidades, resumen de subtotal y cálculo automático en tiempo real.
-- **Registro de Pedidos:** Envío de órdenes especificando modalidad (domicilio o retiro en punto de venta), sede de atención, datos del cliente y método de pago (Efectivo, Nequi, Daviplata o Transferencia bancaria).
-- **Canales Oficiales:** Enlaces directos a las redes sociales verificadas de Maracumango (Instagram y Facebook) en el pie de página.
-
-### 🥤 Panel Operativo del Trabajador
-- **Filtro por Sede:** Visualización de pedidos correspondientes a la sede asignada al colaborador.
-- **Control de Estados:** Actualización inmediata del estado de preparación de cada pedido:
-  - *Pendiente*
-  - *En Preparación*
-  - *Listo para Entrega*
-  - *Entregado* / *Cancelado*
-- **Detalle de Comandas:** Visualización completa de ítems, adiciones, datos del cliente y dirección de entrega.
-
-### 📊 Panel de Administración Central
-- **Dashboard y Métricas:** Indicadores clave de rendimiento, ventas totales, volumen de órdenes y pedidos activos.
-- **Gestión de Catálogo:** Creación, edición, activación/desactivación y eliminación lógica de productos, precios e imágenes.
-- **Gestión de Categorías e Ingredientes:** Organización taxonómica del menú y control de insumos disponibles.
-- **Gestión de Sedes:** Configuración de sedes en Neiva (dirección, teléfono, WhatsApp, horario y estado operativo).
-- **Gestión de Personal y Accesos:** Creación de usuarios con roles de Administrador o Trabajador, asignación de sedes y restablecimiento de credenciales seguras.
-- **Reportes Analíticos:** Consulta y desglose de pedidos por fecha, estado y sede.
-- **Monitoreo del Sistema:** Diagnóstico de conexión y salud con la base de datos Neon PostgreSQL.
+* **Cliente:** consulta el catálogo, personaliza productos, agrega productos al carrito y realiza pedidos para domicilio o recogida en tienda.
+* **Trabajador:** consulta y gestiona los pedidos correspondientes a su sede, actualizando su estado durante la preparación.
+* **Administrador:** administra productos, categorías, ingredientes, sedes, usuarios y consulta información relacionada con las ventas y pedidos.
 
 ---
 
-## 👥 Roles del Sistema
+## 🚀 Funcionalidades principales
 
-El sistema implementa control de acceso basado en roles (RBAC) con autenticación segura vía tokens JWT:
+### 🛍️ Área del cliente
 
-| Rol | Alcance y Permisos |
-| :--- | :--- |
-| **Cliente (Público)** | Navegación del menú, consulta de sedes, personalización de productos, carrito de compras y registro de pedidos. No requiere inicio de sesión. |
-| **Trabajador** | Acceso autenticado mediante credenciales institucionales. Gestiona los pedidos y comandas operativas de su sede asignada. |
-| **Administrador** | Acceso total al sistema: gestión de productos, categorías, inventario de ingredientes, sedes, personal, reportes de ventas y configuración general del negocio. |
+* Catálogo de productos organizado por categorías.
+* Visualización de información y precios de los productos.
+* Selección de ingredientes y adiciones disponibles.
+* Carrito de compras.
+* Registro de pedidos.
+* Selección entre **domicilio** o **recogida en tienda**.
+* Selección del método de pago:
+
+  * Nequi
+  * Efectivo
+* Consulta de las sedes disponibles.
+* Acceso a los canales oficiales de Maracumango.
+
+### 👨‍🍳 Área del trabajador
+
+* Acceso mediante usuario y contraseña.
+* Visualización de pedidos correspondientes a la sede asignada.
+* Consulta del detalle de cada pedido.
+* Actualización del estado de preparación:
+
+  * Pendiente
+  * En preparación
+  * Listo
+  * Entregado
+* Gestión de pedidos cancelados según los permisos establecidos.
+* El trabajador no puede modificar la información administrativa del negocio.
+
+### 👨‍💼 Área administrativa
+
+* Dashboard con información general de pedidos y ventas.
+* Creación, edición y desactivación de productos.
+* Gestión de precios e imágenes de productos.
+* Gestión de categorías.
+* Gestión de ingredientes y adiciones.
+* Administración de sedes.
+* Configuración de información comercial de las sedes.
+* Creación y administración de usuarios.
+* Asignación de roles y sedes a los trabajadores.
+* Consulta de pedidos y reportes.
+* Gestión de la información general del negocio.
 
 ---
 
-## 🛠️ Tecnologías Utilizadas
+## 👥 Roles del sistema
 
-- **Frontend:**
-  - [React 19](https://react.dev/) — Biblioteca para interfaces de usuario interactivas.
-  - [TypeScript](https://www.typescriptlang.org/) — Tipado estático para código mantenible y seguro.
-  - [Vite](https://vite.dev/) — Empaquetador y entorno de desarrollo ultra rápido.
-  - [Tailwind CSS](https://tailwindcss.com/) — Estilos modernos y diseño responsivo para móviles y escritorio.
-  - [Google Fonts & Material Symbols](https://fonts.google.com/) — Tipografías Inter, Plus Jakarta Sans e iconografía.
+El sistema utiliza control de acceso basado en roles (RBAC).
 
-- **Backend:**
-  - [Node.js](https://nodejs.org/) & [Express 5](https://expressjs.com/) — API REST modular y escalable.
-  - [tsx](https://github.com/privatenumber/tsx) — Ejecución directa de TypeScript en el entorno de desarrollo.
-  - [JSON Web Token (jsonwebtoken)](https://github.com/auth0/node-jsonwebtoken) — Generación y validación de tokens de sesión.
-  - [bcryptjs](https://github.com/dcodeIO/bcrypt.js) — Cifrado seguro unidireccional de contraseñas.
-  - [cors](https://github.com/expressjs/cors) — Gestión segura de orígenes cruzados.
+| Rol               | Permisos principales                                                                                 |
+| ----------------- | ---------------------------------------------------------------------------------------------------- |
+| **Cliente**       | Consultar el catálogo, personalizar productos, utilizar el carrito y realizar pedidos.               |
+| **Trabajador**    | Consultar y gestionar los pedidos de la sede que tiene asignada.                                     |
+| **Administrador** | Gestionar productos, categorías, ingredientes, sedes, usuarios, pedidos y configuración del sistema. |
 
-- **Base de Datos:**
-  - [Neon PostgreSQL](https://neon.tech/) — Base de datos relacional PostgreSQL serverless en la nube, con soporte de pooling y conexiones cifradas obligatorias (`SSL`).
-  - [pg (node-postgres)](https://node-postgres.com/) — Cliente PostgreSQL con pool de conexiones optimizado.
+El cliente no necesita crear una cuenta para realizar un pedido.
 
 ---
 
-## 🗄️ Base de Datos: Neon PostgreSQL
+## 🛠️ Tecnologías utilizadas
 
-El proyecto utiliza **Neon PostgreSQL** como motor de persistencia relacional en la nube.
-- **Función en el sistema:** Garantiza la persistencia centralizada y atómica de productos, categorías, ingredientes, pedidos, clientes, usuarios, sedes y parámetros del negocio.
-- **Políticas de conservación:** Incluye rutinas para la depuración programada y retención de pedidos entregados y cancelados, optimizando el rendimiento de las consultas y manteniendo el historial para auditoría y reportes.
+### Frontend
+
+* **React 19** — Construcción de la interfaz de usuario.
+* **TypeScript** — Desarrollo con tipado estático.
+* **Vite** — Entorno de desarrollo y compilación.
+* **Tailwind CSS** — Diseño y estilos responsivos.
+
+### Backend
+
+* **Node.js** — Entorno de ejecución.
+* **Express 5** — Construcción de la API REST.
+* **tsx** — Ejecución de TypeScript durante el desarrollo.
+* **JSON Web Token (JWT)** — Autenticación y manejo de sesiones.
+* **bcryptjs** — Hash seguro de contraseñas.
+* **CORS** — Control de solicitudes entre diferentes orígenes.
+
+### Base de datos
+
+* **Neon PostgreSQL** — Base de datos PostgreSQL alojada en la nube.
+* **node-postgres (pg)** — Conexión entre el backend y PostgreSQL.
 
 ---
 
-## ⚙️ Instalación y Configuración Local
+## 🗄️ Base de datos
 
-### Prerrequisitos
-- **Node.js** (v18.x o superior recomendado)
-- **npm** (incluido con Node.js)
-- Cuenta o instancia en **Neon PostgreSQL** (o PostgreSQL compatible)
+Maracumango utiliza **PostgreSQL mediante Neon** para almacenar la información principal del sistema.
 
-### 1. Clonar o descargar el repositorio
+La base de datos permite mantener de forma persistente información como:
+
+* Productos.
+* Categorías.
+* Ingredientes y adiciones.
+* Pedidos.
+* Usuarios.
+* Sedes.
+* Configuración del negocio.
+
+El proyecto incluye migraciones SQL para crear y actualizar la estructura de la base de datos, además de datos iniciales para facilitar la configuración del sistema.
+
+---
+
+## ⚙️ Instalación y configuración local
+
+### Requisitos
+
+* **Node.js** 18.x o superior.
+* **npm**.
+* Una base de datos PostgreSQL compatible, como Neon.
+
+### 1. Clonar el repositorio
+
 ```bash
 git clone <url-del-repositorio>
 cd maracumango
 ```
 
 ### 2. Instalar dependencias
+
 ```bash
 npm install
 ```
 
-### 3. Configurar variables de entorno
-Crea un archivo `.env` en la raíz del proyecto tomando como plantilla `.env.example`:
+### 3. Configurar las variables de entorno
 
-```bash
-cp .env.example .env
-```
+Crea un archivo `.env` en la raíz del proyecto utilizando `.env.example` como referencia.
 
-Configura los valores correspondientes en `.env`:
+Ejemplo:
 
 ```env
-# Puerto del servidor backend en desarrollo local
 PORT=3001
 NODE_ENV=development
 
-# Cadena de conexión a Neon PostgreSQL (debe incluir ?sslmode=require)
-DATABASE_URL=postgresql://neondb_owner:TU_PASSWORD@ep-tu-endpoint.us-east-2.aws.neon.tech/neondb?sslmode=require
+DATABASE_URL=postgresql://usuario:contraseña@host/neondb?sslmode=require
 
-# Clave secreta para la firma segura de tokens JWT
-JWT_SECRET=tu_clave_secreta_jwt_para_firmar_sesiones
+JWT_SECRET=tu_clave_secreta
 
-# Origen permitido para CORS en desarrollo
 CORS_ORIGIN=http://localhost:5173
 ```
 
-> ⚠️ **IMPORTANTE DE SEGURIDAD:** Nunca compartas ni subas tu archivo `.env` a repositorios públicos de control de versiones. El archivo `.gitignore` ya está configurado para excluirlo automáticamente.
+> ⚠️ **Importante:** el archivo `.env` contiene información sensible y no debe subirse al repositorio. El archivo `.gitignore` está configurado para excluirlo.
 
-### 4. Inicializar la base de datos (Migraciones y Datos Semilla)
-Ejecuta los scripts incluidos para crear la estructura de tablas e insertar los datos iniciales de sedes, categorías y administrador predeterminado:
+### 4. Preparar la base de datos
+
+Ejecuta las migraciones:
 
 ```bash
-# Ejecutar migraciones estructurales
 npm run db:migrate
+```
 
-# Cargar catálogo y usuarios iniciales (opcional)
+Para cargar los datos iniciales:
+
+```bash
 npm run db:seed
 ```
 
 ---
 
-## 💻 Ejecución en Modo Desarrollo
+## 💻 Ejecución en desarrollo
 
-Para iniciar tanto el cliente frontend (Vite) como el servidor backend (Express/Node) de manera simultánea en una sola terminal:
+Para iniciar el proyecto:
 
 ```bash
 npm run dev
 ```
 
-El sistema iniciará en:
-- **Frontend (Vite):** `http://localhost:5173`
-- **Backend API (Express):** `http://localhost:3001`
+Durante el desarrollo se utilizan:
 
-Si deseas ejecutar los servicios de forma individual:
-- Solo cliente: `npm run dev:client`
-- Solo servidor: `npm run dev:server`
+* **Frontend:** `http://localhost:5173`
+* **Backend:** `http://localhost:3001`
 
----
+También es posible ejecutar cada parte por separado:
 
-## 🌐 Preparación y Despliegue en Vercel
+```bash
+npm run dev:client
+```
 
-El proyecto está estructurado y optimizado para desplegarse fácilmente en **Vercel**:
-
-1. **Estructura Fullstack Serverless:**
-   - La interfaz estática compilada de React se genera en la carpeta `dist/`.
-   - Las rutas del backend se sirven a través de funciones serverless de Vercel mediante `api/index.ts` y las reglas definidas en `vercel.json`.
-
-2. **Configuración en Vercel Dashboard:**
-   - **Framework Preset:** `Vite`
-   - **Build Command:** `npm run build`
-   - **Output Directory:** `dist`
-   - **Install Command:** `npm install`
-
-3. **Variables de Entorno en Vercel:**
-   En la sección **Settings → Environment Variables** de tu proyecto en Vercel, agrega las siguientes variables:
-   - `DATABASE_URL`: La cadena de conexión a tu base de datos Neon PostgreSQL con `?sslmode=require`.
-   - `JWT_SECRET`: Una clave segura y aleatoria para la firma de tokens en producción.
-   - `NODE_ENV`: `production`
-
-4. **Despliegue:**
-   - Conecta tu repositorio de GitHub / GitLab a Vercel.
-   - Vercel detectará el archivo `vercel.json` y compilará tanto la aplicación frontend como las funciones serverless de la API.
+```bash
+npm run dev:server
+```
 
 ---
 
-## 📋 Comandos Disponibles
+## 🌐 Despliegue en Vercel
 
-| Comando | Descripción |
-| :--- | :--- |
-| `npm run dev` | Inicia el frontend y backend en paralelo para desarrollo. |
-| `npm run dev:client` | Inicia únicamente el servidor de desarrollo de Vite. |
-| `npm run dev:server` | Inicia únicamente el servidor backend con recarga automática (`tsx watch`). |
-| `npm run build` | Compila el proyecto TypeScript y genera el bundle estático de producción con Vite. |
-| `npm run lint` | Ejecuta el análisis estático de código mediante `oxlint`. |
-| `npm run preview` | Previsualiza localmente la compilación de producción generada en `dist`. |
-| `npm run db:migrate` | Ejecuta las migraciones SQL en la base de datos configurada. |
-| `npm run db:seed` | Inserta datos semilla iniciales en la base de datos. |
+El proyecto está preparado para desplegarse en **Vercel** utilizando su estructura de frontend y funciones serverless.
+
+### Configuración principal
+
+* **Framework:** Vite
+* **Build Command:** `npm run build`
+* **Output Directory:** `dist`
+* **Install Command:** `npm install`
+
+El proyecto incluye:
+
+* `vercel.json` para la configuración del despliegue.
+* `api/index.ts` como punto de entrada de la API.
+* Vite para la compilación del frontend.
+
+### Variables de entorno
+
+Las siguientes variables deben configurarse en el proyecto de Vercel:
+
+```text
+DATABASE_URL
+JWT_SECRET
+NODE_ENV
+```
+
+Los valores deben corresponder al entorno de producción.
+
+### Despliegue
+
+El proyecto puede conectarse a un repositorio de GitHub y desplegarse desde Vercel. Cada nuevo despliegue puede realizarse a partir de los cambios enviados al repositorio.
+
+---
+
+## 📋 Comandos disponibles
+
+| Comando              | Descripción                                  |
+| -------------------- | -------------------------------------------- |
+| `npm run dev`        | Inicia frontend y backend en desarrollo.     |
+| `npm run dev:client` | Inicia únicamente el frontend.               |
+| `npm run dev:server` | Inicia únicamente el backend.                |
+| `npm run build`      | Compila el proyecto para producción.         |
+| `npm run lint`       | Analiza el código mediante Oxlint.           |
+| `npm run preview`    | Previsualiza la compilación de producción.   |
+| `npm run db:migrate` | Ejecuta las migraciones de la base de datos. |
+| `npm run db:seed`    | Carga los datos iniciales.                   |
+
+---
+
+## 📁 Estructura general
+
+```text
+maracumango/
+├── api/                # Entrada de la API para Vercel
+├── public/             # Recursos públicos
+├── server/             # Backend, rutas, servicios y migraciones
+├── src/                # Aplicación frontend
+│   ├── components/     # Componentes de la interfaz
+│   ├── context/        # Contextos de la aplicación
+│   ├── pages/          # Páginas principales
+│   ├── services/       # Servicios del frontend
+│   └── types/          # Tipos de TypeScript
+├── .env.example        # Plantilla de variables de entorno
+├── .gitignore          # Archivos excluidos de Git
+├── package.json        # Dependencias y scripts
+├── vercel.json         # Configuración de Vercel
+└── vite.config.ts      # Configuración de Vite
+```
 
 ---
 
 ## 📄 Licencia
 
-Este proyecto fue desarrollado para **Maracumango Neiva**. Todos los derechos reservados.
+Proyecto desarrollado para **Maracumango Neiva**.
+
+Todos los derechos reservados.
