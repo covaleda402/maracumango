@@ -1,0 +1,59 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─────────────────────────────────────────────────────────
+ * VARIABLES GLOBALES MARACUMANGO
+ * Punto centralizado de identidad visual.
+ * Modificar aquí actualiza toda la interfaz.
+ * ───────────────────────────────────────────────────────── */
+:root {
+  --color-primary:          #3a8c00;   /* Verde oscuro — texto/íconos primarios */
+  --color-primary-bright:   #6abf00;   /* Verde lima brillante — botones CTA */
+  --color-primary-dark:     #1a5c00;   /* Verde muy oscuro — contraste fuerte */
+  --color-secondary:        #fdc425;   /* Amarillo logo — badges y acento cálido */
+  --color-accent:           #e07000;   /* Naranja/mango — énfasis especial */
+  --color-background:       #fafff5;   /* Fondo principal — blanco con tinte verde */
+  --color-surface:          #ffffff;   /* Superficie de tarjetas y modales */
+  --color-text:             #111c0d;   /* Texto principal — casi negro verdoso */
+  --color-text-muted:       #4a5e3a;   /* Texto secundario — gris verdoso */
+}
+
+@layer base {
+  html, body {
+    margin: 0;
+    padding: 0;
+    overscroll-behavior: none;
+    background-color: var(--color-background);
+    color: var(--color-text);
+  }
+}
+
+/* Custom scrollbar styling — Maracumango verde */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f2faea;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #bcdba0;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #6abf00;
+}
+
+/* Animation utilities */
+@keyframes pulse-slow {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.8; transform: scale(1.05); }
+}
+
+.animate-pulse-slow {
+  animation: pulse-slow 3s infinite ease-in-out;
+}
