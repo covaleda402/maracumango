@@ -87,17 +87,11 @@ export const Footer: React.FC = () => {
               Aceptamos pagos rápidos y seguros:
             </p>
             <div className="flex flex-wrap gap-1.5 pt-1">
-              <span className="px-2.5 py-1 rounded-lg bg-surface-container text-xs font-semibold text-on-surface border border-outline-variant/30">
-                Efectivo
-              </span>
               <span className="px-2.5 py-1 rounded-lg bg-surface-container text-xs font-semibold text-primary border border-outline-variant/30">
                 Nequi
               </span>
-              <span className="px-2.5 py-1 rounded-lg bg-surface-container text-xs font-semibold text-secondary border border-outline-variant/30">
-                Daviplata
-              </span>
               <span className="px-2.5 py-1 rounded-lg bg-surface-container text-xs font-semibold text-on-surface border border-outline-variant/30">
-                Transferencia
+                Efectivo
               </span>
             </div>
             <p className="text-[11px] text-on-surface-variant pt-2 border-t border-outline-variant/15 flex items-center gap-1">
