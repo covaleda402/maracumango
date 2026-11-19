@@ -19,6 +19,19 @@ interface AppContextType {
   currentUser: AppUser | null;
   authToken: string | null;
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  registerCustomer: (customerData: {
+    name: string;
+    email: string;
+    phone: string;
+    password: string;
+    defaultAddress?: string;
+    acceptedTerms: boolean;
+  }) => Promise<{ success: boolean; error?: string }>;
+  updateCustomerProfile: (profileData: {
+    name?: string;
+    phone?: string;
+    defaultAddress?: string;
+  }) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
   staffUsers: AppUser[];
   loadStaffUsers: () => Promise<void>;
@@ -35,6 +48,15 @@ interface AppContextType {
   config: BusinessConfig;
   categories: CategoryItem[];
   sedes: Sede[];
+  addBranch: (branchData: {
+    nombre: string;
+    direccion: string;
+    ciudad?: string;
+    whatsapp: string;
+    phone?: string;
+    horario?: string;
+  }) => Promise<{ success: boolean; error?: string }>;
+  deleteBranch: (id: string) => Promise<{ success: boolean; error?: string }>;
   selectedSedeId: string;
   setSelectedSedeId: (sedeId: string) => void;
   workerSedeId: string;
@@ -45,6 +67,8 @@ interface AppContextType {
   setIsCartOpen: (open: boolean) => void;
   isRoleModalOpen: boolean;
   setIsRoleModalOpen: (open: boolean) => void;
+  isTermsModalOpen: boolean;
+  setIsTermsModalOpen: (open: boolean) => void;
   isDbConnected: boolean;
   addToCart: (product: Product, quantity?: number) => void;
   updateCartQuantity: (productId: string, delta: number) => void;
@@ -98,6 +122,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [adminSedeId, setAdminSedeId] = useState<string>('all');
   const [isCartOpen, setIsCartOpen] = useState<boolean>(false);
   const [isRoleModalOpen, setIsRoleModalOpen] = useState<boolean>(false);
+  const [isTermsModalOpen, setIsTermsModalOpen] = useState<boolean>(false);
   const [isDbConnected, setIsDbConnected] = useState<boolean>(false);
 
   useEffect(() => {
@@ -115,6 +140,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               if (user.branchId) {
                 setWorkerSedeId(user.branchId);
               }
+            } else {
+              setUserRoleState('customer');
             }
           } else {
             apiService.logout();
@@ -334,6 +361,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     await reloadAllData();
   };
 
+  const addBranch = async (branchData: {
+    nombre: string;
+    direccion: string;
+    ciudad?: string;
+    whatsapp: string;
+    phone?: string;
+    horario?: string;
+  }) => {
+    const res = await apiService.createBranch(branchData, userRole);
+    if (res.success) {
+      await reloadAllData();
+      return { success: true };
+    }
+    return { success: false, error: res.error };
+  };
+
+  const deleteBranch = async (id: string) => {
+    const res = await apiService.deleteBranch(id, userRole);
+    if (res.success) {
+      await reloadAllData();
+      return { success: true };
+    }
+    return { success: false, error: res.error };
+  };
+
   const login = async (email: string, password: string) => {
     const res = await apiService.login(email, password);
     if (res.success && res.user && res.token) {
@@ -348,11 +400,47 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           setWorkerSedeId(res.user.branchId);
         }
         setActiveTab('pedidos-trabajador');
+      } else {
+        setUserRoleState('customer');
+        setActiveTab('inicio');
       }
       await reloadAllData();
       return { success: true };
     }
     return { success: false, error: res.error || 'Credenciales incorrectas' };
+  };
+
+  const registerCustomer = async (customerData: {
+    name: string;
+    email: string;
+    phone: string;
+    password: string;
+    defaultAddress?: string;
+    acceptedTerms: boolean;
+  }) => {
+    const res = await apiService.registerCustomer(customerData);
+    if (res.success && res.user && res.token) {
+      setAuthTokenState(res.token);
+      setCurrentUser(res.user);
+      setUserRoleState('customer');
+      setActiveTab('inicio');
+      await reloadAllData();
+      return { success: true };
+    }
+    return { success: false, error: res.error || 'Error al registrar cliente.' };
+  };
+
+  const updateCustomerProfile = async (profileData: {
+    name?: string;
+    phone?: string;
+    defaultAddress?: string;
+  }) => {
+    const res = await apiService.updateProfile(profileData);
+    if (res.success && res.user) {
+      setCurrentUser(res.user);
+      return { success: true };
+    }
+    return { success: false, error: res.error || 'Error al actualizar perfil.' };
   };
 
   const logout = () => {
@@ -406,6 +494,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         currentUser,
         authToken,
         login,
+        registerCustomer,
+        updateCustomerProfile,
         logout,
         staffUsers,
         loadStaffUsers,
@@ -422,6 +512,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         config,
         categories,
         sedes,
+        addBranch,
+        deleteBranch,
         selectedSedeId,
         setSelectedSedeId,
         workerSedeId,
@@ -432,6 +524,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setIsCartOpen,
         isRoleModalOpen,
         setIsRoleModalOpen,
+        isTermsModalOpen,
+        setIsTermsModalOpen,
         isDbConnected,
         addToCart,
         updateCartQuantity,

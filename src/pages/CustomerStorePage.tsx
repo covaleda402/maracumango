@@ -95,7 +95,7 @@ export const CustomerStorePage: React.FC = () => {
                       WhatsApp Directo
                     </span>
                     <span className="font-body-sm text-[11px] text-on-surface-variant">
-                      Un clic sin registros
+                      Pedidos con tu cuenta
                     </span>
                   </div>
                 </div>

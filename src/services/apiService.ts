@@ -96,6 +96,42 @@ export const apiService = {
     return null;
   },
 
+  async createBranch(
+    branchData: { nombre: string; direccion: string; ciudad?: string; whatsapp: string; phone?: string; horario?: string },
+    role: string = 'admin'
+  ): Promise<{ success: boolean; branch?: Sede; error?: string }> {
+    try {
+      const res = await fetch(`${BASE_URL}/branches`, {
+        method: 'POST',
+        headers: getHeaders(role),
+        body: JSON.stringify(branchData),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        return { success: true, branch: data };
+      }
+      return { success: false, error: data.error || 'Error al crear la sede.' };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Error de conexión al crear sede.' };
+    }
+  },
+
+  async deleteBranch(id: string, role: string = 'admin'): Promise<{ success: boolean; message?: string; error?: string }> {
+    try {
+      const res = await fetch(`${BASE_URL}/branches/${id}`, {
+        method: 'DELETE',
+        headers: getHeaders(role),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        return { success: true, message: data.message };
+      }
+      return { success: false, error: data.error || 'Error al eliminar sede.' };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Error de conexión.' };
+    }
+  },
+
   // --- PRODUCTS ---
   async getProducts(): Promise<Product[]> {
     try {
@@ -443,6 +479,53 @@ export const apiService = {
       return { success: false, error: data.error || 'Credenciales inválidas.' };
     } catch {
       return { success: false, error: 'Error de red al conectar con el servidor.' };
+    }
+  },
+
+  async registerCustomer(customerData: {
+    name: string;
+    email: string;
+    phone: string;
+    password: string;
+    defaultAddress?: string;
+    acceptedTerms: boolean;
+  }): Promise<{ success: boolean; token?: string; user?: AppUser; error?: string }> {
+    try {
+      const res = await fetch(`${BASE_URL}/auth/register-customer`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(customerData),
+      });
+      const data = await res.json();
+      if (res.ok && data.token) {
+        setAuthToken(data.token);
+        return { success: true, token: data.token, user: data.user };
+      }
+      return { success: false, error: data.error || 'Error al registrar cliente.' };
+    } catch {
+      return { success: false, error: 'Error de conexión con el servidor.' };
+    }
+  },
+
+  async updateProfile(profileData: {
+    name?: string;
+    phone?: string;
+    defaultAddress?: string;
+  }): Promise<{ success: boolean; user?: AppUser; error?: string }> {
+    try {
+      const res = await fetch(`${BASE_URL}/auth/profile`, {
+        method: 'PUT',
+        headers: getHeaders(),
+        body: JSON.stringify(profileData),
+      });
+      const data = await res.json();
+      if (res.ok && data.user) {
+        if (data.token) setAuthToken(data.token);
+        return { success: true, user: data.user };
+      }
+      return { success: false, error: data.error || 'Error al actualizar perfil.' };
+    } catch {
+      return { success: false, error: 'Error de conexión al actualizar perfil.' };
     }
   },
 

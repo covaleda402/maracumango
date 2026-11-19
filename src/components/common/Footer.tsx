@@ -2,7 +2,7 @@ import React from 'react';
 import { useApp } from '../../context/AppContext';
 
 export const Footer: React.FC = () => {
-  const { config } = useApp();
+  const { config, setIsTermsModalOpen } = useApp();
 
   return (
     <footer className="w-full bg-surface-container-low border-t border-outline-variant/30 pt-space-2xl pb-space-xl">
@@ -104,7 +104,18 @@ export const Footer: React.FC = () => {
 
       <div className="max-w-7xl mx-auto px-margin-mobile lg:px-margin-desktop mt-space-xl pt-space-md border-t border-outline-variant/20 flex flex-col sm:flex-row items-center justify-between text-body-sm text-on-surface-variant gap-space-xs">
         <p>© {new Date().getFullYear()} {config.businessName || 'Maracumango'} Neiva. Todos los derechos reservados.</p>
-        <p className="font-label-sm">Sistema de Gestión & Ventas • {config.businessName || 'Maracumango'}</p>
+        <div className="flex items-center gap-4">
+          <button
+            type="button"
+            onClick={() => setIsTermsModalOpen(true)}
+            className="text-xs text-primary hover:underline font-medium flex items-center gap-1"
+          >
+            <span className="material-symbols-outlined text-[14px]">policy</span>
+            <span>Términos, Condiciones & Habeas Data</span>
+          </button>
+          <span className="text-outline-variant">•</span>
+          <p className="font-label-sm text-xs">Sistema de Gestión & Ventas</p>
+        </div>
       </div>
     </footer>
   );

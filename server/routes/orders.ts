@@ -6,6 +6,9 @@ import { INITIAL_ORDERS } from '../../src/data/mockData';
 
 const router = Router();
 
+// In-memory fallback orders for development/testing when database is offline
+const devFallbackOrders: any[] = [...INITIAL_ORDERS];
+
 // GET /api/orders — List orders according to role and branch scope
 router.get('/', async (req: Request, res: Response) => {
   const role = (req.user?.role || req.headers['x-user-role'] as string)?.toLowerCase();
@@ -13,7 +16,7 @@ router.get('/', async (req: Request, res: Response) => {
   const filterBranchId = req.query.branchId as string;
 
   if (!isDatabaseConfigured()) {
-    let orders = [...INITIAL_ORDERS];
+    let orders = [...devFallbackOrders];
     if (role === 'worker') {
       const activeBranch = workerBranchId || 'sede-1';
       orders = orders.filter((o) => o.sedeId === activeBranch && (o.status as string) !== 'PENDING_ADMIN' && (o.status as string) !== 'CANCELLED');
@@ -101,10 +104,60 @@ router.get('/', async (req: Request, res: Response) => {
   }
 });
 
-// GET /api/orders/export-csv — Download sales report in CSV (Admin only - Point 20)
-router.get('/export-csv', requireAdmin, async (req: Request, res: Response) => {
+// Handlers for CSV export (Supports both /export-csv and /export/csv)
+const handleExportCsv = async (req: Request, res: Response) => {
+  const escapeCsv = (str: any) => {
+    const val = str === null || str === undefined ? '' : String(str);
+    return `"${val.replace(/"/g, '""')}"`;
+  };
+
+  const header = [
+    'Numero Pedido',
+    'Fecha y Hora',
+    'Sede',
+    'Cliente',
+    'Telefono',
+    'Tipo Entrega',
+    'Direccion',
+    'Metodo Pago',
+    'Subtotal (COP)',
+    'Tarifa Domicilio (COP)',
+    'Total (COP)',
+    'Estado',
+    'Aprobado Por',
+    'Preparado Por',
+    'Detalle Productos',
+  ];
+
   if (!isDatabaseConfigured()) {
-    return res.status(503).json({ error: 'Base de datos no configurada.' });
+    const csvRows = [header.map(escapeCsv).join(',')];
+    for (const r of devFallbackOrders) {
+      csvRows.push([
+        escapeCsv(r.orderNumber),
+        escapeCsv(new Date(r.createdAt || Date.now()).toLocaleString('es-CO')),
+        escapeCsv(r.sedeNombre || 'Sede Principal'),
+        escapeCsv(r.customerName),
+        escapeCsv(r.customerPhone),
+        escapeCsv(r.deliveryMethod),
+        escapeCsv(r.deliveryAddress || 'En tienda'),
+        escapeCsv(r.paymentMethod),
+        r.subtotal,
+        r.deliveryFee || 0,
+        r.total,
+        escapeCsv(r.status),
+        escapeCsv(r.acceptedBy || 'N/A'),
+        escapeCsv(r.preparedByName || 'N/A'),
+        escapeCsv((r.items || []).map((it: any) => `${it.productName} (${it.quantity}x)`).join(', ')),
+      ].join(','));
+    }
+
+    const csvContent = '\uFEFF' + csvRows.join('\r\n');
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="reporte_ventas_maracumango_${Date.now()}.csv"`
+    );
+    return res.send(csvContent);
   }
 
   try {
@@ -149,30 +202,6 @@ router.get('/export-csv', requireAdmin, async (req: Request, res: Response) => {
 
     const result = await query(sql, params);
 
-    // Build CSV with UTF-8 BOM for Excel compatibility
-    const header = [
-      'Numero Pedido',
-      'Fecha y Hora',
-      'Sede',
-      'Cliente',
-      'Telefono',
-      'Tipo Entrega',
-      'Direccion',
-      'Metodo Pago',
-      'Subtotal (COP)',
-      'Tarifa Domicilio (COP)',
-      'Total (COP)',
-      'Estado',
-      'Aprobado Por',
-      'Preparado Por',
-      'Detalle Productos',
-    ];
-
-    const escapeCsv = (str: any) => {
-      const val = str === null || str === undefined ? '' : String(str);
-      return `"${val.replace(/"/g, '""')}"`;
-    };
-
     const csvRows = [header.map(escapeCsv).join(',')];
 
     for (const r of result.rows) {
@@ -207,10 +236,20 @@ router.get('/export-csv', requireAdmin, async (req: Request, res: Response) => {
     console.error('Error generating CSV export:', error.message);
     res.status(500).json({ error: error.message });
   }
-});
+};
 
-// POST /api/orders — Customer creates a new order (status starts in PENDING_ADMIN)
+router.get('/export-csv', requireAdmin, handleExportCsv);
+router.get('/export/csv', requireAdmin, handleExportCsv);
+
+// POST /api/orders — Customer creates a new order (status starts in PENDING_ADMIN, requires login)
 router.post('/', validateCustomerOrder, async (req: Request, res: Response) => {
+  if (!req.user) {
+    return res.status(401).json({
+      error: 'Debes iniciar sesión o crear una cuenta para poder realizar tu pedido.',
+      requiresAuth: true,
+    });
+  }
+
   const {
     customerName,
     customerPhone,
@@ -224,6 +263,10 @@ router.post('/', validateCustomerOrder, async (req: Request, res: Response) => {
   } = req.body;
 
   const targetSedeId = sedeId || 'sede-1';
+  const finalCustomerName = (customerName || req.user.name || req.user.firstName || 'Cliente').trim();
+  const finalCustomerPhone = (customerPhone || req.user.phone || '').trim();
+  const customerId = req.user.id;
+  const customerEmail = req.user.email;
 
   if (!isDatabaseConfigured()) {
     const nextNum = 100 + Math.floor(Math.random() * 900);
@@ -233,8 +276,10 @@ router.post('/', validateCustomerOrder, async (req: Request, res: Response) => {
     const fallbackOrder = {
       id: `ord-${Date.now()}`,
       orderNumber: `#MMC-${nextNum}`,
-      customerName: customerName.trim(),
-      customerPhone: customerPhone.trim(),
+      customerName: finalCustomerName,
+      customerPhone: finalCustomerPhone,
+      customerId,
+      customerEmail,
       sedeId: targetSedeId,
       sedeNombre: targetSedeId === 'sede-2' ? 'Sede Sector Edsbur / Único' : 'Sede Parque del Amor y la Amistad',
       deliveryMethod,
@@ -256,6 +301,7 @@ router.post('/', validateCustomerOrder, async (req: Request, res: Response) => {
       createdAt: new Date().toISOString(),
       notes: notes ? notes.trim() : undefined,
     };
+    devFallbackOrders.unshift(fallbackOrder);
     return res.status(201).json(fallbackOrder);
   }
 
@@ -308,22 +354,24 @@ router.post('/', validateCustomerOrder, async (req: Request, res: Response) => {
     const orderNumber = `#MMC-${orderSequence}`;
     const orderId = `ord-${Date.now()}`;
 
-    // 3. Insert order strictly in PENDING_ADMIN state
+    // 3. Insert order strictly in PENDING_ADMIN state with registered customer tracking
     const orderInsert = await client.query(
       `INSERT INTO orders (
-        id, order_number, customer_name, customer_phone, branch_id,
+        id, order_number, customer_name, customer_phone, customer_id, customer_email, branch_id,
         delivery_method, delivery_address, delivery_fee, payment_method,
         subtotal, total, status_id, notes
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'PENDING_ADMIN', $12)
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'PENDING_ADMIN', $14)
       RETURNING *`,
       [
         orderId,
         orderNumber,
-        customerName.trim(),
-        customerPhone.trim(),
+        finalCustomerName,
+        finalCustomerPhone,
+        customerId,
+        customerEmail,
         targetSedeId,
         deliveryMethod,
-        deliveryMethod === 'domicilio' ? deliveryAddress.trim() : null,
+        deliveryMethod === 'domicilio' ? deliveryAddress?.trim() : null,
         fee,
         paymentMethod,
         calculatedSubtotal,
@@ -389,7 +437,14 @@ router.patch('/:id/accept', requireAdmin, async (req: Request, res: Response) =>
   const adminId = req.user?.id || 'user-admin-1';
 
   if (!isDatabaseConfigured()) {
-    return res.json({ id, status: 'ACCEPTED', statusLabel: 'Aceptado por Admin' });
+    const found = devFallbackOrders.find((o) => o.id === id);
+    if (found) {
+      found.status = 'ACCEPTED';
+      found.statusLabel = 'Aceptado por Admin';
+      found.acceptedBy = adminId;
+      found.acceptedAt = new Date().toISOString();
+    }
+    return res.json({ id, status: 'ACCEPTED', statusLabel: 'Aceptado por Admin', order: found });
   }
 
   try {
@@ -467,11 +522,26 @@ router.patch('/:id/start-preparation', requireWorkerOrAdmin, async (req: Request
   const userBranch = user?.branchId;
 
   if (!isDatabaseConfigured()) {
+    const found = devFallbackOrders.find((o) => o.id === id);
+    if (found) {
+      if (user?.role === 'WORKER' && userBranch && found.sedeId !== userBranch) {
+        return res.status(403).json({ error: 'No puedes tomar pedidos asignados a otra sede operativa.' });
+      }
+      if (found.status !== 'ACCEPTED') {
+        return res.status(400).json({ error: 'El pedido no está disponible para preparación.' });
+      }
+      found.status = 'PREPARING';
+      found.statusLabel = 'En preparación';
+      found.preparedBy = workerId;
+      found.preparedByName = workerName;
+      found.preparedAt = new Date().toISOString();
+    }
     return res.json({
       id,
       status: 'PREPARING',
       preparedBy: workerId,
       preparedByName: workerName,
+      order: found,
     });
   }
 
@@ -587,7 +657,22 @@ router.patch('/:id/status', requireWorkerOrAdmin, async (req: Request, res: Resp
   }
 
   if (!isDatabaseConfigured()) {
-    return res.json({ id, status: targetStatusId });
+    const found = devFallbackOrders.find((o) => o.id === id);
+    if (found) {
+      if (found.status === 'DELIVERED') {
+        return res.status(400).json({
+          error: 'El pedido ya fue entregado y su registro es definitivo. No se pueden alterar estados de pedidos entregados.',
+        });
+      }
+      if (isWorker && found.status === 'READY' && (targetStatusId === 'PREPARING' || targetStatusId === 'ACCEPTED')) {
+        return res.status(400).json({
+          error: 'No está permitido revertir pedidos que ya están marcados como listos.',
+        });
+      }
+      found.status = targetStatusId;
+      found.statusLabel = targetStatusId === 'READY' ? 'Listo' : targetStatusId === 'DELIVERED' ? 'Entregado' : targetStatusId;
+    }
+    return res.json({ id, status: targetStatusId, order: found });
   }
 
   try {
@@ -643,7 +728,20 @@ router.patch('/:id/cancel', requireAdmin, async (req: Request, res: Response) =>
   const { reason } = req.body || {};
 
   if (!isDatabaseConfigured()) {
-    return res.json({ id, status: 'CANCELLED', statusLabel: 'Cancelado' });
+    const found = devFallbackOrders.find((o) => o.id === id);
+    if (found) {
+      if (found.status === 'DELIVERED') {
+        return res.status(400).json({
+          error: 'No es posible cancelar un pedido que ya fue entregado al cliente.',
+        });
+      }
+      found.status = 'CANCELLED';
+      found.statusLabel = 'Cancelado';
+      if (reason) {
+        found.notes = (found.notes ? found.notes + ' | ' : '') + `Cancelación: ${reason}`;
+      }
+    }
+    return res.json({ id, status: 'CANCELLED', statusLabel: 'Cancelado', order: found });
   }
 
   try {

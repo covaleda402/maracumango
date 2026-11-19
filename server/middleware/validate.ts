@@ -26,7 +26,17 @@ export const CONTAINS_LETTERS_REGEX = /[a-zA-Z]/;
 export const VALID_EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export const validateCustomerOrder = (req: Request, res: Response, next: NextFunction): void => {
-  const { customerName, customerPhone, notes, items, deliveryMethod, deliveryAddress } = req.body;
+  let { customerName, customerPhone, notes, items, deliveryMethod, deliveryAddress } = req.body;
+
+  // Auto-populate from authenticated user if not explicitly sent in body
+  if ((!customerName || !String(customerName).trim()) && req.user) {
+    customerName = req.user.name || `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim() || req.user.firstName;
+    req.body.customerName = customerName;
+  }
+  if ((!customerPhone || !String(customerPhone).trim()) && req.user?.phone) {
+    customerPhone = req.user.phone;
+    req.body.customerPhone = customerPhone;
+  }
 
   // Validate Customer Name
   if (!customerName || typeof customerName !== 'string' || !customerName.trim()) {
@@ -52,14 +62,12 @@ export const validateCustomerOrder = (req: Request, res: Response, next: NextFun
     return;
   }
 
-  // Validate Indicaciones / Notas: NO numbers allowed
-  if (notes && typeof notes === 'string' && notes.trim() !== '') {
-    if (!NO_NUMBERS_REGEX.test(notes)) {
-      res.status(400).json({
-        error: 'Las indicaciones del pedido no pueden contener números según la política del negocio.',
-      });
-      return;
-    }
+  // Validate Indicaciones / Notas (permitir indicaciones claras para domicilio o preparación)
+  if (notes && typeof notes === 'string' && notes.length > 500) {
+    res.status(400).json({
+      error: 'Las indicaciones del pedido no pueden exceder los 500 caracteres.',
+    });
+    return;
   }
 
   // Validate Delivery Method & Address

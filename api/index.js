@@ -67,23 +67,28 @@ var authenticate = (req, _res, next) => {
         lastName: decoded.lastName,
         email: decoded.email,
         role: decoded.role,
-        branchId: decoded.branchId
+        branchId: decoded.branchId,
+        phone: decoded.phone,
+        defaultAddress: decoded.defaultAddress,
+        acceptedTerms: decoded.acceptedTerms
       };
       return next();
     } catch {
     }
   }
-  const roleHeader = req.headers["x-user-role"]?.toUpperCase();
-  const branchHeader = req.headers["x-branch-id"];
-  const userIdHeader = req.headers["x-user-id"];
-  if (roleHeader === "ADMIN" || roleHeader === "WORKER") {
-    req.user = {
-      id: userIdHeader || (roleHeader === "ADMIN" ? "user-admin-1" : "user-worker-1"),
-      firstName: roleHeader === "ADMIN" ? "Admin" : "Trabajador",
-      email: roleHeader === "ADMIN" ? "admin@maracumango.com" : "trabajador@maracumango.com",
-      role: roleHeader,
-      branchId: branchHeader || (roleHeader === "WORKER" ? "sede-1" : null)
-    };
+  if (process.env.NODE_ENV !== "production" && process.env.ALLOW_HEADER_AUTH === "true") {
+    const roleHeader = req.headers["x-user-role"]?.toUpperCase();
+    const branchHeader = req.headers["x-branch-id"];
+    const userIdHeader = req.headers["x-user-id"];
+    if (roleHeader === "ADMIN" || roleHeader === "WORKER") {
+      req.user = {
+        id: userIdHeader || (roleHeader === "ADMIN" ? "user-admin-1" : "user-worker-1"),
+        firstName: roleHeader === "ADMIN" ? "Admin" : "Trabajador",
+        email: roleHeader === "ADMIN" ? "admin@maracumango.com" : "trabajador@maracumango.com",
+        role: roleHeader,
+        branchId: branchHeader || (roleHeader === "WORKER" ? "sede-1" : null)
+      };
+    }
   }
   next();
 };
@@ -137,9 +142,10 @@ var SEDES = [
 
 // server/routes/branches.ts
 var router = Router();
+var devFallbackBranches = [...SEDES];
 router.get("/", async (_req, res) => {
   if (!isDatabaseConfigured()) {
-    return res.json(SEDES);
+    return res.json(devFallbackBranches);
   }
   try {
     const branchesResult = await query(
@@ -182,7 +188,7 @@ router.get("/", async (_req, res) => {
 router.get("/:id", async (req, res) => {
   const { id } = req.params;
   if (!isDatabaseConfigured()) {
-    const found = SEDES.find((s) => s.id === id);
+    const found = devFallbackBranches.find((s) => s.id === id);
     return found ? res.json(found) : res.status(404).json({ error: "Sede no encontrada" });
   }
   try {
@@ -229,7 +235,23 @@ router.put("/:id", requireAdmin, async (req, res) => {
   const { id } = req.params;
   const { nombre, direccion, ciudad, whatsapp, phone, activa } = req.body;
   if (!isDatabaseConfigured()) {
-    return res.status(503).json({ error: "Base de datos Neon no configurada." });
+    const idx = devFallbackBranches.findIndex((s) => s.id === id);
+    if (idx === -1) {
+      return res.status(404).json({ error: "Sede no encontrada" });
+    }
+    devFallbackBranches[idx] = {
+      ...devFallbackBranches[idx],
+      ...nombre !== void 0 && { nombre: String(nombre).trim() },
+      ...direccion !== void 0 && { direccion: String(direccion).trim() },
+      ...ciudad !== void 0 && { ciudad: String(ciudad).trim() },
+      ...whatsapp !== void 0 && { whatsapp: String(whatsapp).trim() },
+      ...phone !== void 0 && { phone: String(phone).trim() },
+      ...activa !== void 0 && { activa: !!activa }
+    };
+    return res.json({
+      ...devFallbackBranches[idx],
+      message: "Sede actualizada exitosamente (Modo local)."
+    });
   }
   try {
     const cleanNombre = nombre !== void 0 ? String(nombre).trim() : null;
@@ -267,6 +289,100 @@ router.put("/:id", requireAdmin, async (req, res) => {
     });
   } catch (error) {
     console.error("Error updating branch in DB:", error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+router.post("/", requireAdmin, async (req, res) => {
+  const { nombre, direccion, ciudad, whatsapp, phone, horario } = req.body;
+  if (!nombre || !direccion || !whatsapp) {
+    return res.status(400).json({ error: "Nombre, direcci\xF3n y WhatsApp son obligatorios para crear una sede." });
+  }
+  const cleanNombre = String(nombre).trim();
+  const cleanDireccion = String(direccion).trim();
+  const cleanCiudad = ciudad ? String(ciudad).trim() : "Neiva, Huila";
+  const cleanWhatsapp = String(whatsapp).trim();
+  const cleanPhone = phone ? String(phone).trim() : cleanWhatsapp;
+  const cleanHorario = horario ? String(horario).trim() : "Jornada Continua: 9:00 a.m. \u2013 9:00 p.m.";
+  const branchId = `sede-${Date.now()}`;
+  if (!isDatabaseConfigured()) {
+    const newSedeFallback = {
+      id: branchId,
+      nombre: cleanNombre,
+      direccion: cleanDireccion,
+      ciudad: cleanCiudad,
+      whatsapp: cleanWhatsapp,
+      phone: cleanPhone,
+      horario: cleanHorario,
+      shiftInfo: `Turno Activo: ${cleanHorario}`,
+      activa: true,
+      shifts: []
+    };
+    devFallbackBranches.push(newSedeFallback);
+    return res.status(201).json(newSedeFallback);
+  }
+  try {
+    const result = await query(
+      `INSERT INTO branches (id, name, address, city, phone, whatsapp, is_active)
+       VALUES ($1, $2, $3, $4, $5, $6, TRUE)
+       RETURNING *`,
+      [branchId, cleanNombre, cleanDireccion, cleanCiudad, cleanPhone, cleanWhatsapp]
+    );
+    const b = result.rows[0];
+    const shiftId = `shift-${Date.now()}`;
+    await query(
+      `INSERT INTO shifts (id, branch_id, name, start_time, end_time, description, is_active)
+       VALUES ($1, $2, $3, '09:00:00', '21:00:00', $4, TRUE)`,
+      [shiftId, branchId, "Jornada Comercial", cleanHorario]
+    );
+    res.status(201).json({
+      id: b.id,
+      nombre: b.name,
+      direccion: b.address,
+      ciudad: b.city,
+      whatsapp: b.whatsapp,
+      phone: b.phone || b.whatsapp,
+      horario: cleanHorario,
+      shiftInfo: `Turno Activo: ${cleanHorario}`,
+      activa: b.is_active,
+      shifts: [
+        {
+          id: shiftId,
+          name: "Jornada Comercial",
+          startTime: "09:00:00",
+          endTime: "21:00:00",
+          description: cleanHorario,
+          isActive: true
+        }
+      ],
+      message: "Sede creada exitosamente."
+    });
+  } catch (error) {
+    console.error("Error creating branch in DB:", error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+router.delete("/:id", requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  if (!isDatabaseConfigured()) {
+    const idx = devFallbackBranches.findIndex((s) => s.id === id);
+    if (idx !== -1) {
+      devFallbackBranches.splice(idx, 1);
+    }
+    return res.json({ message: "Sede desactivada o eliminada correctamente.", success: true, deleted: true });
+  }
+  try {
+    const orderCheck = await query("SELECT id FROM orders WHERE branch_id = $1 LIMIT 1", [id]);
+    if (orderCheck.rows.length > 0) {
+      await query("UPDATE branches SET is_active = FALSE, updated_at = CURRENT_TIMESTAMP WHERE id = $1", [id]);
+      return res.json({
+        message: "La sede tiene pedidos hist\xF3ricos asociados, por lo que fue desactivada de forma segura.",
+        deactivated: true
+      });
+    }
+    await query("DELETE FROM branches WHERE id = $1", [id]);
+    res.json({ message: "Sede eliminada permanentemente.", deleted: true });
+  } catch (error) {
+    console.error("Error deleting branch:", error.message);
     res.status(500).json({ error: error.message });
   }
 });
@@ -657,7 +773,15 @@ var VALID_PHONE_REGEX = /^[0-9+\s()-]{7,20}$/;
 var CONTAINS_LETTERS_REGEX = /[a-zA-Z]/;
 var VALID_EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 var validateCustomerOrder = (req, res, next) => {
-  const { customerName, customerPhone, notes, items, deliveryMethod, deliveryAddress } = req.body;
+  let { customerName, customerPhone, notes, items, deliveryMethod, deliveryAddress } = req.body;
+  if ((!customerName || !String(customerName).trim()) && req.user) {
+    customerName = req.user.name || `${req.user.firstName || ""} ${req.user.lastName || ""}`.trim() || req.user.firstName;
+    req.body.customerName = customerName;
+  }
+  if ((!customerPhone || !String(customerPhone).trim()) && req.user?.phone) {
+    customerPhone = req.user.phone;
+    req.body.customerPhone = customerPhone;
+  }
   if (!customerName || typeof customerName !== "string" || !customerName.trim()) {
     res.status(400).json({ error: "El nombre del cliente es obligatorio." });
     return;
@@ -678,13 +802,11 @@ var validateCustomerOrder = (req, res, next) => {
     });
     return;
   }
-  if (notes && typeof notes === "string" && notes.trim() !== "") {
-    if (!NO_NUMBERS_REGEX.test(notes)) {
-      res.status(400).json({
-        error: "Las indicaciones del pedido no pueden contener n\xFAmeros seg\xFAn la pol\xEDtica del negocio."
-      });
-      return;
-    }
+  if (notes && typeof notes === "string" && notes.length > 500) {
+    res.status(400).json({
+      error: "Las indicaciones del pedido no pueden exceder los 500 caracteres."
+    });
+    return;
   }
   if (!deliveryMethod || !["domicilio", "recoger"].includes(deliveryMethod)) {
     res.status(400).json({ error: "M\xE9todo de entrega inv\xE1lido (domicilio o recoger)." });
@@ -1077,12 +1199,13 @@ var products_default = router4;
 // server/routes/orders.ts
 import { Router as Router5 } from "express";
 var router5 = Router5();
+var devFallbackOrders = [...INITIAL_ORDERS];
 router5.get("/", async (req, res) => {
   const role = (req.user?.role || req.headers["x-user-role"])?.toLowerCase();
   const workerBranchId = req.user?.branchId || req.headers["x-branch-id"];
   const filterBranchId = req.query.branchId;
   if (!isDatabaseConfigured()) {
-    let orders = [...INITIAL_ORDERS];
+    let orders = [...devFallbackOrders];
     if (role === "worker") {
       const activeBranch = workerBranchId || "sede-1";
       orders = orders.filter((o) => o.sedeId === activeBranch && o.status !== "PENDING_ADMIN" && o.status !== "CANCELLED");
@@ -1158,9 +1281,56 @@ router5.get("/", async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
-router5.get("/export-csv", requireAdmin, async (req, res) => {
+var handleExportCsv = async (req, res) => {
+  const escapeCsv = (str) => {
+    const val = str === null || str === void 0 ? "" : String(str);
+    return `"${val.replace(/"/g, '""')}"`;
+  };
+  const header = [
+    "Numero Pedido",
+    "Fecha y Hora",
+    "Sede",
+    "Cliente",
+    "Telefono",
+    "Tipo Entrega",
+    "Direccion",
+    "Metodo Pago",
+    "Subtotal (COP)",
+    "Tarifa Domicilio (COP)",
+    "Total (COP)",
+    "Estado",
+    "Aprobado Por",
+    "Preparado Por",
+    "Detalle Productos"
+  ];
   if (!isDatabaseConfigured()) {
-    return res.status(503).json({ error: "Base de datos no configurada." });
+    const csvRows = [header.map(escapeCsv).join(",")];
+    for (const r of devFallbackOrders) {
+      csvRows.push([
+        escapeCsv(r.orderNumber),
+        escapeCsv(new Date(r.createdAt || Date.now()).toLocaleString("es-CO")),
+        escapeCsv(r.sedeNombre || "Sede Principal"),
+        escapeCsv(r.customerName),
+        escapeCsv(r.customerPhone),
+        escapeCsv(r.deliveryMethod),
+        escapeCsv(r.deliveryAddress || "En tienda"),
+        escapeCsv(r.paymentMethod),
+        r.subtotal,
+        r.deliveryFee || 0,
+        r.total,
+        escapeCsv(r.status),
+        escapeCsv(r.acceptedBy || "N/A"),
+        escapeCsv(r.preparedByName || "N/A"),
+        escapeCsv((r.items || []).map((it) => `${it.productName} (${it.quantity}x)`).join(", "))
+      ].join(","));
+    }
+    const csvContent = "\uFEFF" + csvRows.join("\r\n");
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="reporte_ventas_maracumango_${Date.now()}.csv"`
+    );
+    return res.send(csvContent);
   }
   try {
     const branchFilter = req.query.branchId;
@@ -1200,27 +1370,6 @@ router5.get("/export-csv", requireAdmin, async (req, res) => {
       ORDER BY o.created_at DESC
     `;
     const result = await query(sql, params);
-    const header = [
-      "Numero Pedido",
-      "Fecha y Hora",
-      "Sede",
-      "Cliente",
-      "Telefono",
-      "Tipo Entrega",
-      "Direccion",
-      "Metodo Pago",
-      "Subtotal (COP)",
-      "Tarifa Domicilio (COP)",
-      "Total (COP)",
-      "Estado",
-      "Aprobado Por",
-      "Preparado Por",
-      "Detalle Productos"
-    ];
-    const escapeCsv = (str) => {
-      const val = str === null || str === void 0 ? "" : String(str);
-      return `"${val.replace(/"/g, '""')}"`;
-    };
     const csvRows = [header.map(escapeCsv).join(",")];
     for (const r of result.rows) {
       const dateStr = new Date(r.created_at).toLocaleString("es-CO");
@@ -1253,8 +1402,16 @@ router5.get("/export-csv", requireAdmin, async (req, res) => {
     console.error("Error generating CSV export:", error.message);
     res.status(500).json({ error: error.message });
   }
-});
+};
+router5.get("/export-csv", requireAdmin, handleExportCsv);
+router5.get("/export/csv", requireAdmin, handleExportCsv);
 router5.post("/", validateCustomerOrder, async (req, res) => {
+  if (!req.user) {
+    return res.status(401).json({
+      error: "Debes iniciar sesi\xF3n o crear una cuenta para poder realizar tu pedido.",
+      requiresAuth: true
+    });
+  }
   const {
     customerName,
     customerPhone,
@@ -1267,6 +1424,10 @@ router5.post("/", validateCustomerOrder, async (req, res) => {
     items
   } = req.body;
   const targetSedeId = sedeId || "sede-1";
+  const finalCustomerName = (customerName || req.user.name || req.user.firstName || "Cliente").trim();
+  const finalCustomerPhone = (customerPhone || req.user.phone || "").trim();
+  const customerId = req.user.id;
+  const customerEmail = req.user.email;
   if (!isDatabaseConfigured()) {
     const nextNum = 100 + Math.floor(Math.random() * 900);
     const subtotal = items.reduce((sum, it) => sum + (it.unitPrice || 14e3) * it.quantity, 0);
@@ -1274,8 +1435,10 @@ router5.post("/", validateCustomerOrder, async (req, res) => {
     const fallbackOrder = {
       id: `ord-${Date.now()}`,
       orderNumber: `#MMC-${nextNum}`,
-      customerName: customerName.trim(),
-      customerPhone: customerPhone.trim(),
+      customerName: finalCustomerName,
+      customerPhone: finalCustomerPhone,
+      customerId,
+      customerEmail,
       sedeId: targetSedeId,
       sedeNombre: targetSedeId === "sede-2" ? "Sede Sector Edsbur / \xDAnico" : "Sede Parque del Amor y la Amistad",
       deliveryMethod,
@@ -1297,6 +1460,7 @@ router5.post("/", validateCustomerOrder, async (req, res) => {
       createdAt: (/* @__PURE__ */ new Date()).toISOString(),
       notes: notes ? notes.trim() : void 0
     };
+    devFallbackOrders.unshift(fallbackOrder);
     return res.status(201).json(fallbackOrder);
   }
   const client = await getClient();
@@ -1341,19 +1505,21 @@ router5.post("/", validateCustomerOrder, async (req, res) => {
     const orderId = `ord-${Date.now()}`;
     const orderInsert = await client.query(
       `INSERT INTO orders (
-        id, order_number, customer_name, customer_phone, branch_id,
+        id, order_number, customer_name, customer_phone, customer_id, customer_email, branch_id,
         delivery_method, delivery_address, delivery_fee, payment_method,
         subtotal, total, status_id, notes
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'PENDING_ADMIN', $12)
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'PENDING_ADMIN', $14)
       RETURNING *`,
       [
         orderId,
         orderNumber,
-        customerName.trim(),
-        customerPhone.trim(),
+        finalCustomerName,
+        finalCustomerPhone,
+        customerId,
+        customerEmail,
         targetSedeId,
         deliveryMethod,
-        deliveryMethod === "domicilio" ? deliveryAddress.trim() : null,
+        deliveryMethod === "domicilio" ? deliveryAddress?.trim() : null,
         fee,
         paymentMethod,
         calculatedSubtotal,
@@ -1412,7 +1578,14 @@ router5.patch("/:id/accept", requireAdmin, async (req, res) => {
   const { id } = req.params;
   const adminId = req.user?.id || "user-admin-1";
   if (!isDatabaseConfigured()) {
-    return res.json({ id, status: "ACCEPTED", statusLabel: "Aceptado por Admin" });
+    const found = devFallbackOrders.find((o) => o.id === id);
+    if (found) {
+      found.status = "ACCEPTED";
+      found.statusLabel = "Aceptado por Admin";
+      found.acceptedBy = adminId;
+      found.acceptedAt = (/* @__PURE__ */ new Date()).toISOString();
+    }
+    return res.json({ id, status: "ACCEPTED", statusLabel: "Aceptado por Admin", order: found });
   }
   try {
     const result = await query(
@@ -1477,11 +1650,26 @@ router5.patch("/:id/start-preparation", requireWorkerOrAdmin, async (req, res) =
   const workerName = user ? user.firstName + (user.lastName ? " " + user.lastName : "") : "Trabajador de Barra";
   const userBranch = user?.branchId;
   if (!isDatabaseConfigured()) {
+    const found = devFallbackOrders.find((o) => o.id === id);
+    if (found) {
+      if (user?.role === "WORKER" && userBranch && found.sedeId !== userBranch) {
+        return res.status(403).json({ error: "No puedes tomar pedidos asignados a otra sede operativa." });
+      }
+      if (found.status !== "ACCEPTED") {
+        return res.status(400).json({ error: "El pedido no est\xE1 disponible para preparaci\xF3n." });
+      }
+      found.status = "PREPARING";
+      found.statusLabel = "En preparaci\xF3n";
+      found.preparedBy = workerId;
+      found.preparedByName = workerName;
+      found.preparedAt = (/* @__PURE__ */ new Date()).toISOString();
+    }
     return res.json({
       id,
       status: "PREPARING",
       preparedBy: workerId,
-      preparedByName: workerName
+      preparedByName: workerName,
+      order: found
     });
   }
   try {
@@ -1576,7 +1764,22 @@ router5.patch("/:id/status", requireWorkerOrAdmin, async (req, res) => {
     });
   }
   if (!isDatabaseConfigured()) {
-    return res.json({ id, status: targetStatusId });
+    const found = devFallbackOrders.find((o) => o.id === id);
+    if (found) {
+      if (found.status === "DELIVERED") {
+        return res.status(400).json({
+          error: "El pedido ya fue entregado y su registro es definitivo. No se pueden alterar estados de pedidos entregados."
+        });
+      }
+      if (isWorker && found.status === "READY" && (targetStatusId === "PREPARING" || targetStatusId === "ACCEPTED")) {
+        return res.status(400).json({
+          error: "No est\xE1 permitido revertir pedidos que ya est\xE1n marcados como listos."
+        });
+      }
+      found.status = targetStatusId;
+      found.statusLabel = targetStatusId === "READY" ? "Listo" : targetStatusId === "DELIVERED" ? "Entregado" : targetStatusId;
+    }
+    return res.json({ id, status: targetStatusId, order: found });
   }
   try {
     const orderCheck = await query("SELECT status_id, branch_id FROM orders WHERE id = $1", [id]);
@@ -1621,7 +1824,20 @@ router5.patch("/:id/cancel", requireAdmin, async (req, res) => {
   const { id } = req.params;
   const { reason } = req.body || {};
   if (!isDatabaseConfigured()) {
-    return res.json({ id, status: "CANCELLED", statusLabel: "Cancelado" });
+    const found = devFallbackOrders.find((o) => o.id === id);
+    if (found) {
+      if (found.status === "DELIVERED") {
+        return res.status(400).json({
+          error: "No es posible cancelar un pedido que ya fue entregado al cliente."
+        });
+      }
+      found.status = "CANCELLED";
+      found.statusLabel = "Cancelado";
+      if (reason) {
+        found.notes = (found.notes ? found.notes + " | " : "") + `Cancelaci\xF3n: ${reason}`;
+      }
+    }
+    return res.json({ id, status: "CANCELLED", statusLabel: "Cancelado", order: found });
   }
   try {
     const check = await query("SELECT status_id FROM orders WHERE id = $1", [id]);
@@ -1736,6 +1952,110 @@ import bcrypt from "bcryptjs";
 import jwt2 from "jsonwebtoken";
 var router7 = Router7();
 var JWT_SECRET2 = process.env.JWT_SECRET || "maracumango_super_secret_jwt_key_2026_prod";
+var devFallbackCustomers = [];
+router7.post("/register-customer", async (req, res) => {
+  const { name, firstName, lastName, email, phone, password, defaultAddress, acceptedTerms } = req.body;
+  const resolvedFirstName = (firstName || name || "").trim();
+  const cleanEmail = (email || "").toLowerCase().trim();
+  const cleanPhone = (phone || "").trim();
+  const cleanAddress = (defaultAddress || "").trim();
+  if (!resolvedFirstName) {
+    return res.status(400).json({ error: "El nombre completo es obligatorio." });
+  }
+  if (!cleanEmail || !VALID_EMAIL_REGEX.test(cleanEmail)) {
+    return res.status(400).json({ error: "Ingresa un correo electr\xF3nico v\xE1lido." });
+  }
+  if (!cleanPhone || cleanPhone.length < 7) {
+    return res.status(400).json({ error: "Ingresa un n\xFAmero de tel\xE9fono o celular v\xE1lido." });
+  }
+  if (!password || password.length < 6) {
+    return res.status(400).json({ error: "La contrase\xF1a debe tener al menos 6 caracteres." });
+  }
+  if (!acceptedTerms) {
+    return res.status(400).json({
+      error: "Debes aceptar los T\xE9rminos, Condiciones y la Pol\xEDtica de Tratamiento de Datos Personales (Habeas Data) para registrarte."
+    });
+  }
+  const userId = `cust-${Date.now()}`;
+  if (!isDatabaseConfigured()) {
+    const existing = devFallbackCustomers.find((c) => c.email === cleanEmail);
+    if (existing) {
+      return res.status(400).json({ error: "Ya existe una cuenta registrada con este correo electr\xF3nico." });
+    }
+    const saltRounds = 10;
+    const passwordHash = await bcrypt.hash(password, saltRounds);
+    const newDevCustomer = {
+      id: userId,
+      name: resolvedFirstName,
+      firstName: resolvedFirstName,
+      lastName: lastName ? lastName.trim() : null,
+      email: cleanEmail,
+      phone: cleanPhone,
+      defaultAddress: cleanAddress,
+      passwordHash,
+      role: "CUSTOMER",
+      roleId: "CUSTOMER",
+      branchId: null,
+      acceptedTerms: true,
+      active: true
+    };
+    devFallbackCustomers.push(newDevCustomer);
+    const tokenPayload = {
+      id: newDevCustomer.id,
+      name: newDevCustomer.name,
+      firstName: newDevCustomer.firstName,
+      lastName: newDevCustomer.lastName,
+      email: newDevCustomer.email,
+      phone: newDevCustomer.phone,
+      defaultAddress: newDevCustomer.defaultAddress,
+      role: "CUSTOMER",
+      roleId: "CUSTOMER",
+      acceptedTerms: true
+    };
+    const token = jwt2.sign(tokenPayload, JWT_SECRET2, { expiresIn: "14d" });
+    return res.status(201).json({
+      token,
+      user: tokenPayload,
+      message: "Cuenta creada exitosamente. \xA1Bienvenido a Maracumango!"
+    });
+  }
+  try {
+    const saltRounds = 10;
+    const passwordHash = await bcrypt.hash(password, saltRounds);
+    const result = await query(
+      `INSERT INTO users (id, first_name, last_name, email, password_hash, role_id, phone, default_address, accepted_terms, terms_accepted_at, is_active)
+       VALUES ($1, $2, $3, $4, $5, 'CUSTOMER', $6, $7, TRUE, CURRENT_TIMESTAMP, TRUE)
+       RETURNING id, first_name AS "firstName", last_name AS "lastName", email, phone, default_address AS "defaultAddress", role_id AS "roleId", role_id AS role, accepted_terms AS "acceptedTerms"`,
+      [userId, resolvedFirstName, lastName ? lastName.trim() : null, cleanEmail, passwordHash, cleanPhone, cleanAddress || null]
+    );
+    const customerRow = result.rows[0];
+    const customerPayload = {
+      id: customerRow.id,
+      name: `${customerRow.firstName} ${customerRow.lastName || ""}`.trim(),
+      firstName: customerRow.firstName,
+      lastName: customerRow.lastName,
+      email: customerRow.email,
+      phone: customerRow.phone,
+      defaultAddress: customerRow.defaultAddress,
+      role: "CUSTOMER",
+      roleId: "CUSTOMER",
+      branchId: null,
+      acceptedTerms: true
+    };
+    const token = jwt2.sign(customerPayload, JWT_SECRET2, { expiresIn: "14d" });
+    res.status(201).json({
+      token,
+      user: customerPayload,
+      message: "Cuenta creada exitosamente. \xA1Bienvenido a Maracumango!"
+    });
+  } catch (error) {
+    if (error.code === "23505") {
+      return res.status(400).json({ error: "Ya existe una cuenta registrada con este correo electr\xF3nico." });
+    }
+    console.error("Error registrando cliente:", error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
 router7.post("/login", async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) {
@@ -1752,7 +2072,8 @@ router7.post("/login", async (req, res) => {
         email: "admin@maracumango.com",
         role: "ADMIN",
         roleId: "ADMIN",
-        branchId: null
+        branchId: null,
+        acceptedTerms: true
       };
       const token = jwt2.sign(user, JWT_SECRET2, { expiresIn: "7d" });
       return res.json({ token, user });
@@ -1767,16 +2088,38 @@ router7.post("/login", async (req, res) => {
         role: "WORKER",
         roleId: "WORKER",
         branchId: "sede-1",
-        branchName: "Sede Parque del Amor y la Amistad"
+        branchName: "Sede Parque del Amor y la Amistad",
+        acceptedTerms: true
       };
       const token = jwt2.sign(user, JWT_SECRET2, { expiresIn: "7d" });
       return res.json({ token, user });
+    }
+    const devCust = devFallbackCustomers.find((c) => c.email === cleanEmail);
+    if (devCust) {
+      const isValid = await bcrypt.compare(password, devCust.passwordHash);
+      if (isValid) {
+        const tokenPayload = {
+          id: devCust.id,
+          name: devCust.name,
+          firstName: devCust.firstName,
+          lastName: devCust.lastName,
+          email: devCust.email,
+          phone: devCust.phone,
+          defaultAddress: devCust.defaultAddress,
+          role: "CUSTOMER",
+          roleId: "CUSTOMER",
+          acceptedTerms: true
+        };
+        const token = jwt2.sign(tokenPayload, JWT_SECRET2, { expiresIn: "14d" });
+        return res.json({ token, user: tokenPayload, message: "Inicio de sesi\xF3n exitoso." });
+      }
     }
     return res.status(401).json({ error: "Credenciales inv\xE1lidas." });
   }
   try {
     const userRes = await query(
       `SELECT u.id, u.first_name, u.last_name, u.email, u.password_hash, u.role_id, u.branch_id, u.is_active,
+              u.phone, u.default_address, u.accepted_terms,
               b.name AS branch_name
        FROM users u
        LEFT JOIN branches b ON b.id = u.branch_id
@@ -1800,12 +2143,15 @@ router7.post("/login", async (req, res) => {
       firstName: userRow.first_name,
       lastName: userRow.last_name,
       email: userRow.email,
+      phone: userRow.phone,
+      defaultAddress: userRow.default_address,
       role: userRow.role_id,
       roleId: userRow.role_id,
       branchId: userRow.branch_id,
-      branchName: userRow.branch_name
+      branchName: userRow.branch_name,
+      acceptedTerms: userRow.accepted_terms ?? true
     };
-    const token = jwt2.sign(userPayload, JWT_SECRET2, { expiresIn: "7d" });
+    const token = jwt2.sign(userPayload, JWT_SECRET2, { expiresIn: userPayload.role === "CUSTOMER" ? "14d" : "7d" });
     res.json({
       token,
       user: userPayload,
@@ -1821,6 +2167,59 @@ router7.get("/me", (req, res) => {
     return res.json({ user: req.user });
   }
   res.status(401).json({ error: "No autenticado." });
+});
+router7.put("/profile", async (req, res) => {
+  if (!req.user) {
+    return res.status(401).json({ error: "No autenticado." });
+  }
+  const { name, firstName, lastName, phone, defaultAddress } = req.body;
+  const resolvedFirstName = (firstName || name || "").trim() || req.user.firstName;
+  const cleanPhone = phone !== void 0 ? String(phone).trim() : req.user.phone;
+  const cleanAddress = defaultAddress !== void 0 ? String(defaultAddress).trim() : req.user.defaultAddress;
+  if (!isDatabaseConfigured()) {
+    const updated = {
+      ...req.user,
+      firstName: resolvedFirstName,
+      name: resolvedFirstName,
+      phone: cleanPhone,
+      defaultAddress: cleanAddress
+    };
+    req.user = updated;
+    const token = jwt2.sign(updated, JWT_SECRET2, { expiresIn: "14d" });
+    return res.json({ user: updated, token, message: "Perfil actualizado correctamente." });
+  }
+  try {
+    const result = await query(
+      `UPDATE users
+       SET first_name = COALESCE($1, first_name),
+           last_name = CASE WHEN $2::varchar IS NOT NULL THEN $2 ELSE last_name END,
+           phone = COALESCE($3, phone),
+           default_address = COALESCE($4, default_address),
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $5
+       RETURNING id, first_name AS "firstName", last_name AS "lastName", email, phone, default_address AS "defaultAddress", role_id AS "roleId", role_id AS role, accepted_terms AS "acceptedTerms"`,
+      [resolvedFirstName, lastName ? String(lastName).trim() : null, cleanPhone || null, cleanAddress || null, req.user.id]
+    );
+    const updatedRow = result.rows[0];
+    const updatedPayload = {
+      ...req.user,
+      id: updatedRow.id,
+      firstName: updatedRow.firstName,
+      lastName: updatedRow.lastName,
+      name: `${updatedRow.firstName} ${updatedRow.lastName || ""}`.trim(),
+      email: updatedRow.email,
+      phone: updatedRow.phone,
+      defaultAddress: updatedRow.defaultAddress,
+      role: updatedRow.role,
+      roleId: updatedRow.roleId,
+      acceptedTerms: updatedRow.acceptedTerms ?? true
+    };
+    const token = jwt2.sign(updatedPayload, JWT_SECRET2, { expiresIn: "14d" });
+    res.json({ user: updatedPayload, token, message: "Perfil actualizado correctamente." });
+  } catch (error) {
+    console.error("Error actualizando perfil:", error.message);
+    res.status(500).json({ error: error.message });
+  }
 });
 router7.get("/users", requireAdmin, async (_req, res) => {
   if (!isDatabaseConfigured()) {

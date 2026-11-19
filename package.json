@@ -12,6 +12,7 @@
     "db:seed": "tsx server/scripts/seed.ts",
     "build:server": "esbuild server/index.ts --bundle --platform=node --format=esm --packages=external --outfile=api/index.js",
     "build": "tsc -b && vite build && npm run build:server",
+    "test": "tsx server/scripts/test_system_suite.ts",
     "lint": "oxlint",
     "preview": "vite preview"
   },

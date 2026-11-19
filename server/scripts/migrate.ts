@@ -37,7 +37,12 @@ async function runMigrations() {
     console.log('✅ Conexión establecida con éxito.');
 
     const migrationsDir = path.resolve(__dirname, '../migrations');
-    const migrationFiles = ['001_create_schema.sql', '002_seed_initial_data.sql', '003_upgrade_schema.sql'];
+    const migrationFiles = [
+      '001_create_schema.sql',
+      '002_seed_initial_data.sql',
+      '003_upgrade_schema.sql',
+      '004_customer_auth_and_branches.sql',
+    ];
 
     for (const file of migrationFiles) {
       const filePath = path.join(migrationsDir, file);

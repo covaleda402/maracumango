@@ -90,6 +90,8 @@ export interface Order {
   orderNumber: string;
   customerName: string;
   customerPhone: string;
+  customerId?: string;
+  customerEmail?: string;
   sedeId: string;
   sedeNombre?: string;
   deliveryMethod: DeliveryMethod;
@@ -128,8 +130,11 @@ export interface AppUser {
   firstName?: string;
   lastName?: string;
   email: string;
-  role: 'ADMIN' | 'WORKER';
+  phone?: string;
+  defaultAddress?: string;
+  role: 'ADMIN' | 'WORKER' | 'CUSTOMER';
   branchId?: string | null;
   branchName?: string;
+  acceptedTerms?: boolean;
   active?: boolean;
 }

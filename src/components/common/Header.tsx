@@ -83,12 +83,12 @@ export const Header: React.FC = () => {
             }`}
           >
             <span className="material-symbols-outlined text-[16px]">
-              {currentUser ? 'account_circle' : 'login'}
+              {currentUser ? 'account_circle' : 'person'}
             </span>
-            <span className="hidden sm:inline">
+            <span className="hidden sm:inline font-semibold">
               {currentUser
-                ? currentUser.firstName || currentUser.name
-                : 'Ingreso Equipo'}
+                ? `Hola, ${currentUser.firstName || currentUser.name}`
+                : 'Iniciar Sesión'}
             </span>
           </button>
         </div>

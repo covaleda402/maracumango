@@ -8,8 +8,11 @@ export interface AuthenticatedUser {
   firstName: string;
   lastName?: string;
   email: string;
-  role: 'ADMIN' | 'WORKER';
+  role: 'ADMIN' | 'WORKER' | 'CUSTOMER';
   branchId?: string | null;
+  phone?: string;
+  defaultAddress?: string;
+  acceptedTerms?: boolean;
 }
 
 declare global {
@@ -38,6 +41,9 @@ export const authenticate = (req: Request, _res: Response, next: NextFunction): 
         email: decoded.email,
         role: decoded.role,
         branchId: decoded.branchId,
+        phone: decoded.phone,
+        defaultAddress: decoded.defaultAddress,
+        acceptedTerms: decoded.acceptedTerms,
       };
       return next();
     } catch {
@@ -45,21 +51,33 @@ export const authenticate = (req: Request, _res: Response, next: NextFunction): 
     }
   }
 
-  // Header fallback for development/testing
-  const roleHeader = (req.headers['x-user-role'] as string)?.toUpperCase();
-  const branchHeader = req.headers['x-branch-id'] as string;
-  const userIdHeader = req.headers['x-user-id'] as string;
+  // Header fallback strictly allowed ONLY in local development or automated tests when explicitly enabled
+  if (process.env.NODE_ENV !== 'production' && process.env.ALLOW_HEADER_AUTH === 'true') {
+    const roleHeader = (req.headers['x-user-role'] as string)?.toUpperCase();
+    const branchHeader = req.headers['x-branch-id'] as string;
+    const userIdHeader = req.headers['x-user-id'] as string;
 
-  if (roleHeader === 'ADMIN' || roleHeader === 'WORKER') {
-    req.user = {
-      id: userIdHeader || (roleHeader === 'ADMIN' ? 'user-admin-1' : 'user-worker-1'),
-      firstName: roleHeader === 'ADMIN' ? 'Admin' : 'Trabajador',
-      email: roleHeader === 'ADMIN' ? 'admin@maracumango.com' : 'trabajador@maracumango.com',
-      role: roleHeader as 'ADMIN' | 'WORKER',
-      branchId: branchHeader || (roleHeader === 'WORKER' ? 'sede-1' : null),
-    };
+    if (roleHeader === 'ADMIN' || roleHeader === 'WORKER') {
+      req.user = {
+        id: userIdHeader || (roleHeader === 'ADMIN' ? 'user-admin-1' : 'user-worker-1'),
+        firstName: roleHeader === 'ADMIN' ? 'Admin' : 'Trabajador',
+        email: roleHeader === 'ADMIN' ? 'admin@maracumango.com' : 'trabajador@maracumango.com',
+        role: roleHeader as 'ADMIN' | 'WORKER',
+        branchId: branchHeader || (roleHeader === 'WORKER' ? 'sede-1' : null),
+      };
+    }
   }
 
+  next();
+};
+
+export const requireAuth = (req: Request, res: Response, next: NextFunction): void => {
+  if (!req.user) {
+    res.status(401).json({
+      error: 'Sesión requerida. Por favor inicia sesión para continuar.',
+    });
+    return;
+  }
   next();
 };
 

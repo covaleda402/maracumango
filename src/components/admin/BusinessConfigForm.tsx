@@ -3,7 +3,7 @@ import { useApp } from '../../context/AppContext';
 import type { Sede } from '../../types';
 
 export const BusinessConfigForm: React.FC = () => {
-  const { config, updateConfig, sedes, updateSede } = useApp();
+  const { config, updateConfig, sedes, updateSede, addBranch, deleteBranch } = useApp();
 
   const [activeTab, setActiveTab] = useState<'sedes' | 'identidad'>('sedes');
 
@@ -18,6 +18,14 @@ export const BusinessConfigForm: React.FC = () => {
   // Sede-specific editing state
   const [selectedSedeId, setSelectedSedeId] = useState<string>('sede-1');
   const [sedeForms, setSedeForms] = useState<Record<string, Partial<Sede>>>({});
+
+  // New Sede Modal state
+  const [isNewSedeModalOpen, setIsNewSedeModalOpen] = useState(false);
+  const [newSedeNombre, setNewSedeNombre] = useState('');
+  const [newSedeDireccion, setNewSedeDireccion] = useState('');
+  const [newSedeCiudad, setNewSedeCiudad] = useState('Neiva, Huila');
+  const [newSedeWhatsapp, setNewSedeWhatsapp] = useState('');
+  const [newSedeHorario, setNewSedeHorario] = useState('Jornada Continua: 10:00 a.m. – 10:00 p.m.');
 
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -129,6 +137,72 @@ export const BusinessConfigForm: React.FC = () => {
     }
   };
 
+  const handleCreateNewSede = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newSedeNombre.trim() || !newSedeDireccion.trim() || !newSedeWhatsapp.trim()) {
+      setErrorMessage('Por favor completa el nombre, dirección y WhatsApp de la nueva sede.');
+      return;
+    }
+
+    setIsSaving(true);
+    setErrorMessage(null);
+    setSuccessMessage(null);
+
+    try {
+      const res = await addBranch({
+        nombre: newSedeNombre.trim(),
+        direccion: newSedeDireccion.trim(),
+        ciudad: newSedeCiudad.trim() || 'Neiva, Huila',
+        whatsapp: newSedeWhatsapp.trim(),
+        phone: newSedeWhatsapp.trim(),
+        horario: newSedeHorario.trim(),
+      });
+
+      if (res.success) {
+        setSuccessMessage(`¡Sede "${newSedeNombre}" creada exitosamente en la base de datos!`);
+        setIsNewSedeModalOpen(false);
+        setNewSedeNombre('');
+        setNewSedeDireccion('');
+        setNewSedeWhatsapp('');
+        setTimeout(() => setSuccessMessage(null), 4000);
+      } else {
+        setErrorMessage(res.error || 'Error al crear la sede.');
+      }
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Error de conexión.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDeleteSede = async (sedeId: string, sedeName: string) => {
+    if (sedes.length <= 1) {
+      alert('Debe existir al menos una sede activa en el sistema.');
+      return;
+    }
+    if (!window.confirm(`¿Estás seguro de eliminar o desactivar la sede "${sedeName}"?`)) {
+      return;
+    }
+
+    setIsSaving(true);
+    setErrorMessage(null);
+    setSuccessMessage(null);
+
+    try {
+      const res = await deleteBranch(sedeId);
+      if (res.success) {
+        setSuccessMessage(`Sede "${sedeName}" eliminada o desactivada correctamente.`);
+        setTimeout(() => setSuccessMessage(null), 4000);
+      } else {
+        setErrorMessage(res.error || 'Error al eliminar sede.');
+      }
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Error de conexión.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const currentSedeData = sedeForms[selectedSedeId] || {};
   const currentSedeOriginal = sedes.find((s) => s.id === selectedSedeId);
 
@@ -194,26 +268,40 @@ export const BusinessConfigForm: React.FC = () => {
         {/* TAB 1: SEDES DE NEIVA */}
         {activeTab === 'sedes' && (
           <div className="space-y-6">
-            {/* Sede selector pills */}
-            <div className="flex items-center gap-2 border-b border-outline-variant/15 pb-4">
-              <span className="text-xs font-bold uppercase tracking-wider text-on-surface-variant mr-1">
-                Selecciona la Sede a Modificar:
-              </span>
-              {sedes.map((s) => (
-                <button
-                  key={s.id}
-                  type="button"
-                  onClick={() => setSelectedSedeId(s.id)}
-                  className={`px-4 py-2 rounded-2xl text-xs font-bold transition-all flex items-center gap-2 border ${
-                    selectedSedeId === s.id
-                      ? 'bg-primary-container text-on-primary border-primary shadow-sm'
-                      : 'bg-surface-container-low text-on-surface-variant border-outline-variant/20 hover:bg-surface-container'
-                  }`}
-                >
-                  <span className="material-symbols-outlined text-[16px]">location_on</span>
-                  <span>{s.nombre}</span>
-                </button>
-              ))}
+            {/* Sede selector pills with + Nueva Sede button */}
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-outline-variant/15 pb-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-bold uppercase tracking-wider text-on-surface-variant mr-1">
+                  Sedes ({sedes.length}):
+                </span>
+                {sedes.map((s) => (
+                  <button
+                    key={s.id}
+                    type="button"
+                    onClick={() => setSelectedSedeId(s.id)}
+                    className={`px-3.5 py-1.5 rounded-2xl text-xs font-bold transition-all flex items-center gap-1.5 border ${
+                      selectedSedeId === s.id
+                        ? 'bg-primary-container text-on-primary border-primary shadow-sm'
+                        : 'bg-surface-container-low text-on-surface-variant border-outline-variant/20 hover:bg-surface-container'
+                    }`}
+                  >
+                    <span className="material-symbols-outlined text-[15px]">location_on</span>
+                    <span>{s.nombre}</span>
+                    {s.activa === false && (
+                      <span className="text-[10px] bg-error/20 text-error px-1.5 py-0.2 rounded-full font-bold">Inactiva</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsNewSedeModalOpen(true)}
+                className="px-4 py-2 rounded-2xl bg-secondary-container text-on-secondary-container font-bold text-xs flex items-center gap-1.5 shadow-sm hover:bg-secondary transition-all shrink-0"
+              >
+                <span className="material-symbols-outlined text-[18px]">add_location_alt</span>
+                <span>+ Nueva Sede</span>
+              </button>
             </div>
 
             {/* Sede Editing Form */}
@@ -321,7 +409,17 @@ export const BusinessConfigForm: React.FC = () => {
                   </label>
                 </div>
 
-                <div className="pt-4 border-t border-outline-variant/20 flex justify-end">
+                <div className="pt-4 border-t border-outline-variant/20 flex flex-col sm:flex-row items-center justify-between gap-3">
+                  <button
+                    type="button"
+                    disabled={isSaving}
+                    onClick={() => handleDeleteSede(selectedSedeId, currentSedeOriginal.nombre)}
+                    className="px-4 py-2 rounded-xl border border-error/30 text-error font-medium text-xs hover:bg-error/10 transition-colors flex items-center gap-1.5"
+                  >
+                    <span className="material-symbols-outlined text-[16px]">delete</span>
+                    <span>Desactivar / Eliminar Sede</span>
+                  </button>
+
                   <button
                     type="submit"
                     disabled={isSaving}
@@ -332,6 +430,126 @@ export const BusinessConfigForm: React.FC = () => {
                   </button>
                 </div>
               </form>
+            )}
+
+            {/* Modal para Crear Nueva Sede */}
+            {isNewSedeModalOpen && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-on-surface/50 backdrop-blur-sm animate-fadeIn">
+                <div className="w-full max-w-lg bg-surface-container-lowest rounded-3xl p-6 shadow-2xl border border-outline-variant/30 max-h-[92vh] overflow-y-auto">
+                  <div className="flex items-center justify-between pb-3 mb-4 border-b border-outline-variant/20">
+                    <div className="flex items-center gap-2">
+                      <div className="w-9 h-9 rounded-xl bg-secondary-container text-on-secondary-container flex items-center justify-center shadow-sm">
+                        <span className="material-symbols-outlined text-[20px]">add_location_alt</span>
+                      </div>
+                      <div>
+                        <h3 className="font-headline-sm text-base font-bold text-on-surface">
+                          Agregar Nueva Sede en Neiva
+                        </h3>
+                        <p className="text-xs text-on-surface-variant">
+                          Se guardará en Neon PostgreSQL y estará disponible de inmediato
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setIsNewSedeModalOpen(false)}
+                      className="p-1.5 rounded-full text-on-surface-variant hover:bg-surface-container"
+                    >
+                      <span className="material-symbols-outlined text-[20px]">close</span>
+                    </button>
+                  </div>
+
+                  <form onSubmit={handleCreateNewSede} className="space-y-3.5">
+                    <div>
+                      <label className="block text-xs font-bold text-on-surface mb-1">
+                        Nombre de la Sede *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={newSedeNombre}
+                        onChange={(e) => setNewSedeNombre(e.target.value)}
+                        placeholder="Ej: Sede Sur - Canaima o Sede Ipanema"
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-surface-container-low border border-outline-variant/30 text-on-surface text-xs focus:outline-none focus:ring-2 focus:ring-primary font-medium"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-on-surface mb-1">
+                        Dirección Física en Neiva *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={newSedeDireccion}
+                        onChange={(e) => setNewSedeDireccion(e.target.value)}
+                        placeholder="Ej: Calle 8 Sur # 22-10, Barrio Canaima"
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-surface-container-low border border-outline-variant/30 text-on-surface text-xs focus:outline-none focus:ring-2 focus:ring-primary"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-bold text-on-surface mb-1">
+                          Ciudad
+                        </label>
+                        <input
+                          type="text"
+                          value={newSedeCiudad}
+                          onChange={(e) => setNewSedeCiudad(e.target.value)}
+                          placeholder="Neiva, Huila"
+                          className="w-full px-3.5 py-2.5 rounded-xl bg-surface-container-low border border-outline-variant/30 text-on-surface text-xs focus:outline-none focus:ring-2 focus:ring-primary"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-on-surface mb-1">
+                          WhatsApp de Pedidos *
+                        </label>
+                        <input
+                          type="tel"
+                          required
+                          value={newSedeWhatsapp}
+                          onChange={(e) => setNewSedeWhatsapp(e.target.value.replace(/\D/g, ''))}
+                          placeholder="Ej: 3177401873"
+                          className="w-full px-3.5 py-2.5 rounded-xl bg-surface-container-low border border-outline-variant/30 text-on-surface text-xs focus:outline-none focus:ring-2 focus:ring-primary"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-on-surface mb-1">
+                        Horario de Atención
+                      </label>
+                      <input
+                        type="text"
+                        value={newSedeHorario}
+                        onChange={(e) => setNewSedeHorario(e.target.value)}
+                        placeholder="Jornada Continua: 10:00 a.m. – 10:00 p.m."
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-surface-container-low border border-outline-variant/30 text-on-surface text-xs focus:outline-none focus:ring-2 focus:ring-primary"
+                      />
+                    </div>
+
+                    <div className="pt-3 border-t border-outline-variant/20 flex gap-2 justify-end">
+                      <button
+                        type="button"
+                        onClick={() => setIsNewSedeModalOpen(false)}
+                        className="px-4 py-2 rounded-xl bg-surface-container hover:bg-surface-container-high text-xs font-semibold text-on-surface"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={isSaving}
+                        className="px-5 py-2 rounded-xl bg-primary-container text-on-primary text-xs font-bold shadow-md hover:bg-primary transition-all flex items-center gap-1.5"
+                      >
+                        <span className="material-symbols-outlined text-[16px]">add_circle</span>
+                        <span>{isSaving ? 'Creando Sede...' : 'Crear Sede'}</span>
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
             )}
           </div>
         )}

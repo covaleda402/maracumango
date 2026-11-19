@@ -3,6 +3,7 @@ import { AppProvider, useApp } from './context/AppContext';
 import { Header } from './components/common/Header';
 import { Footer } from './components/common/Footer';
 import { RoleModal } from './components/common/RoleModal';
+import { TermsModal } from './components/common/TermsModal';
 import { CartDrawer } from './components/customer/CartDrawer';
 import { CustomerStorePage } from './pages/CustomerStorePage';
 import { WorkerPanelPage } from './pages/WorkerPanelPage';
@@ -35,6 +36,9 @@ const AppContent: React.FC = () => {
 
       {/* Role Switcher Modal */}
       <RoleModal />
+
+      {/* Terms and Habeas Data Modal */}
+      <TermsModal />
     </div>
   );
 };

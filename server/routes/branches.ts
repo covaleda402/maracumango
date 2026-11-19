@@ -5,10 +5,13 @@ import { SEDES } from '../../src/data/sedes';
 
 const router = Router();
 
+// In-memory fallback for development/offline testing
+const devFallbackBranches: any[] = [...SEDES];
+
 // GET /api/branches — Get all active branches with shifts
 router.get('/', async (_req: Request, res: Response) => {
   if (!isDatabaseConfigured()) {
-    return res.json(SEDES);
+    return res.json(devFallbackBranches);
   }
 
   try {
@@ -60,7 +63,7 @@ router.get('/', async (_req: Request, res: Response) => {
 router.get('/:id', async (req: Request, res: Response) => {
   const { id } = req.params;
   if (!isDatabaseConfigured()) {
-    const found = SEDES.find((s) => s.id === id);
+    const found = devFallbackBranches.find((s) => s.id === id);
     return found ? res.json(found) : res.status(404).json({ error: 'Sede no encontrada' });
   }
 
@@ -116,7 +119,23 @@ router.put('/:id', requireAdmin, async (req: Request, res: Response) => {
   const { nombre, direccion, ciudad, whatsapp, phone, activa } = req.body;
 
   if (!isDatabaseConfigured()) {
-    return res.status(503).json({ error: 'Base de datos Neon no configurada.' });
+    const idx = devFallbackBranches.findIndex((s) => s.id === id);
+    if (idx === -1) {
+      return res.status(404).json({ error: 'Sede no encontrada' });
+    }
+    devFallbackBranches[idx] = {
+      ...devFallbackBranches[idx],
+      ...(nombre !== undefined && { nombre: String(nombre).trim() }),
+      ...(direccion !== undefined && { direccion: String(direccion).trim() }),
+      ...(ciudad !== undefined && { ciudad: String(ciudad).trim() }),
+      ...(whatsapp !== undefined && { whatsapp: String(whatsapp).trim() }),
+      ...(phone !== undefined && { phone: String(phone).trim() }),
+      ...(activa !== undefined && { activa: !!activa }),
+    };
+    return res.json({
+      ...devFallbackBranches[idx],
+      message: 'Sede actualizada exitosamente (Modo local).',
+    });
   }
 
   try {
@@ -158,6 +177,119 @@ router.put('/:id', requireAdmin, async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Error updating branch in DB:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/branches — Create a new branch (Admin only)
+router.post('/', requireAdmin, async (req: Request, res: Response) => {
+  const { nombre, direccion, ciudad, whatsapp, phone, horario } = req.body;
+
+  if (!nombre || !direccion || !whatsapp) {
+    return res.status(400).json({ error: 'Nombre, dirección y WhatsApp son obligatorios para crear una sede.' });
+  }
+
+  const cleanNombre = String(nombre).trim();
+  const cleanDireccion = String(direccion).trim();
+  const cleanCiudad = ciudad ? String(ciudad).trim() : 'Neiva, Huila';
+  const cleanWhatsapp = String(whatsapp).trim();
+  const cleanPhone = phone ? String(phone).trim() : cleanWhatsapp;
+  const cleanHorario = horario ? String(horario).trim() : 'Jornada Continua: 9:00 a.m. – 9:00 p.m.';
+
+  const branchId = `sede-${Date.now()}`;
+
+  if (!isDatabaseConfigured()) {
+    const newSedeFallback = {
+      id: branchId,
+      nombre: cleanNombre,
+      direccion: cleanDireccion,
+      ciudad: cleanCiudad,
+      whatsapp: cleanWhatsapp,
+      phone: cleanPhone,
+      horario: cleanHorario,
+      shiftInfo: `Turno Activo: ${cleanHorario}`,
+      activa: true,
+      shifts: [],
+    };
+    devFallbackBranches.push(newSedeFallback);
+    return res.status(201).json(newSedeFallback);
+  }
+
+  try {
+    const result = await query(
+      `INSERT INTO branches (id, name, address, city, phone, whatsapp, is_active)
+       VALUES ($1, $2, $3, $4, $5, $6, TRUE)
+       RETURNING *`,
+      [branchId, cleanNombre, cleanDireccion, cleanCiudad, cleanPhone, cleanWhatsapp]
+    );
+
+    const b = result.rows[0];
+
+    // Create a default operational shift for the new branch
+    const shiftId = `shift-${Date.now()}`;
+    await query(
+      `INSERT INTO shifts (id, branch_id, name, start_time, end_time, description, is_active)
+       VALUES ($1, $2, $3, '09:00:00', '21:00:00', $4, TRUE)`,
+      [shiftId, branchId, 'Jornada Comercial', cleanHorario]
+    );
+
+    res.status(201).json({
+      id: b.id,
+      nombre: b.name,
+      direccion: b.address,
+      ciudad: b.city,
+      whatsapp: b.whatsapp,
+      phone: b.phone || b.whatsapp,
+      horario: cleanHorario,
+      shiftInfo: `Turno Activo: ${cleanHorario}`,
+      activa: b.is_active,
+      shifts: [
+        {
+          id: shiftId,
+          name: 'Jornada Comercial',
+          startTime: '09:00:00',
+          endTime: '21:00:00',
+          description: cleanHorario,
+          isActive: true,
+        },
+      ],
+      message: 'Sede creada exitosamente.',
+    });
+  } catch (error: any) {
+    console.error('Error creating branch in DB:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// DELETE /api/branches/:id — Soft delete or remove branch (Admin only)
+router.delete('/:id', requireAdmin, async (req: Request, res: Response) => {
+  const { id } = req.params;
+
+  if (!isDatabaseConfigured()) {
+    const idx = devFallbackBranches.findIndex((s) => s.id === id);
+    if (idx !== -1) {
+      devFallbackBranches.splice(idx, 1);
+    }
+    return res.json({ message: 'Sede desactivada o eliminada correctamente.', success: true, deleted: true });
+  }
+
+  try {
+    // Check if the branch has historical orders
+    const orderCheck = await query('SELECT id FROM orders WHERE branch_id = $1 LIMIT 1', [id]);
+    if (orderCheck.rows.length > 0) {
+      // Soft-delete to preserve order history and analytics
+      await query('UPDATE branches SET is_active = FALSE, updated_at = CURRENT_TIMESTAMP WHERE id = $1', [id]);
+      return res.json({
+        message: 'La sede tiene pedidos históricos asociados, por lo que fue desactivada de forma segura.',
+        deactivated: true,
+      });
+    }
+
+    // Try hard delete if no historical orders
+    await query('DELETE FROM branches WHERE id = $1', [id]);
+    res.json({ message: 'Sede eliminada permanentemente.', deleted: true });
+  } catch (error: any) {
+    console.error('Error deleting branch:', error.message);
     res.status(500).json({ error: error.message });
   }
 });

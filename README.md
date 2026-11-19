@@ -2,6 +2,8 @@
 
 Sistema web integral de comercio electrónico y gestión operativa para **Maracumango** en Neiva, Huila. Diseñado para ofrecer una experiencia fluida a los clientes al explorar el catálogo de granizados, micheladas y helados artesanales, junto con paneles dedicados para la operación de los trabajadores en cada sede y la administración central del negocio.
 
+> 📖 **Manual de Usuario:** Consulta el [Manual de Usuario Detallado](MANUAL_DE_USUARIO.md) para ver la guía paso a paso de Clientes, Trabajadores de Barra y Administrador.
+
 ---
 
 ## 📌 Descripción General
@@ -19,25 +21,29 @@ Sistema web integral de comercio electrónico y gestión operativa para **Maracu
 - **Catálogo Interactivo:** Exploración de productos organizados por categorías (Granizados, Micheladas, Helados Artesanales, etc.).
 - **Detalle y Personalización:** Selección de ingredientes, adiciones y notas especiales para la preparación.
 - **Carrito de Compras:** Gestión ágil de cantidades, resumen de subtotal y cálculo automático en tiempo real.
-- **Registro de Pedidos:** Envío de órdenes especificando modalidad (domicilio o retiro en punto de venta), sede de atención, datos del cliente y método de pago (Efectivo, Nequi, Daviplata o Transferencia bancaria).
+- **Registro Seguro y Habeas Data:** Creación de cuenta y login para clientes con aceptación explícita de Términos y Condiciones y Tratamiento de Datos Personales (Ley 1581 de 2012 de Colombia).
+- **Autocompletado de Pedidos:** Los datos de contacto y dirección de entrega se guardan en el perfil para autocompletar futuros pedidos.
+- **Registro de Pedidos y WhatsApp:** Envío de órdenes especificando modalidad (domicilio o retiro en punto de venta), sede de atención y método de pago (Efectivo, Nequi, Daviplata o Transferencia bancaria), generando la comanda verificada y el mensaje preformateado para WhatsApp.
 - **Canales Oficiales:** Enlaces directos a las redes sociales verificadas de Maracumango (Instagram y Facebook) en el pie de página.
 
 ### 🥤 Panel Operativo del Trabajador
 - **Filtro por Sede:** Visualización de pedidos correspondientes a la sede asignada al colaborador.
+- **Aislamiento de Comandas:** Solo visualiza pedidos aprobados previamente por el Administrador (`PENDING_ADMIN` oculto hasta aprobación).
 - **Control de Estados:** Actualización inmediata del estado de preparación de cada pedido:
-  - *Pendiente*
-  - *En Preparación*
+  - *Aceptado*
+  - *En Preparación* (con bloqueo atómico de trabajador)
   - *Listo para Entrega*
-  - *Entregado* / *Cancelado*
+  - *Entregado*
 - **Detalle de Comandas:** Visualización completa de ítems, adiciones, datos del cliente y dirección de entrega.
 
 ### 📊 Panel de Administración Central
 - **Dashboard y Métricas:** Indicadores clave de rendimiento, ventas totales, volumen de órdenes y pedidos activos.
+- **Aprobación Rápida de Pedidos:** Aprobación en un clic de órdenes entrantes (`PENDING_ADMIN` → `ACCEPTED`).
+- **Gestión Multi-Sede (+ Nueva Sede):** Creación, edición, activación/desactivación y eliminación de sedes físicas en Neiva (dirección, teléfono, WhatsApp, horario y estado operativo).
 - **Gestión de Catálogo:** Creación, edición, activación/desactivación y eliminación lógica de productos, precios e imágenes.
 - **Gestión de Categorías e Ingredientes:** Organización taxonómica del menú y control de insumos disponibles.
-- **Gestión de Sedes:** Configuración de sedes en Neiva (dirección, teléfono, WhatsApp, horario y estado operativo).
 - **Gestión de Personal y Accesos:** Creación de usuarios con roles de Administrador o Trabajador, asignación de sedes y restablecimiento de credenciales seguras.
-- **Reportes Analíticos:** Consulta y desglose de pedidos por fecha, estado y sede.
+- **Exportación de Reportes a Excel/CSV:** Descarga de reportes detallados de ventas con formato de moneda colombiana y codificación UTF-8 BOM.
 - **Monitoreo del Sistema:** Diagnóstico de conexión y salud con la base de datos Neon PostgreSQL.
 
 ---
@@ -48,9 +54,9 @@ El sistema implementa control de acceso basado en roles (RBAC) con autenticació
 
 | Rol | Alcance y Permisos |
 | :--- | :--- |
-| **Cliente (Público)** | Navegación del menú, consulta de sedes, personalización de productos, carrito de compras y registro de pedidos. No requiere inicio de sesión. |
+| **Cliente (Registrado / Invitado)** | Navegación libre del catálogo y personalización del carrito. Para confirmar y realizar pedidos, se requiere inicio de sesión o creación de cuenta con aceptación obligatoria de Términos y Habeas Data (Ley 1581 de 2012). Guarda datos de contacto y dirección para autocompletar futuros despachos. |
 | **Trabajador** | Acceso autenticado mediante credenciales institucionales. Gestiona los pedidos y comandas operativas de su sede asignada. |
-| **Administrador** | Acceso total al sistema: gestión de productos, categorías, inventario de ingredientes, sedes, personal, reportes de ventas y configuración general del negocio. |
+| **Administrador** | Acceso total al sistema: aprobación de pedidos, creación de nuevas sedes (`+ Nueva Sede`), gestión de catálogo, inventario de ingredientes, personal, exportación de reportes de ventas y configuración general del negocio. |
 
 ---
 
@@ -193,6 +199,7 @@ El proyecto está estructurado y optimizado para desplegarse fácilmente en **Ve
 | `npm run dev:client` | Inicia únicamente el servidor de desarrollo de Vite. |
 | `npm run dev:server` | Inicia únicamente el servidor backend con recarga automática (`tsx watch`). |
 | `npm run build` | Compila el proyecto TypeScript y genera el bundle estático de producción con Vite. |
+| `npm test` | Ejecuta la suite integral de 27 pruebas automatizadas de seguridad, usabilidad y persistencia. |
 | `npm run lint` | Ejecuta el análisis estático de código mediante `oxlint`. |
 | `npm run preview` | Previsualiza localmente la compilación de producción generada en `dist`. |
 | `npm run db:migrate` | Ejecuta las migraciones SQL en la base de datos configurada. |
