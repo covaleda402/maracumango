@@ -19,11 +19,44 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// CORS configuration - Flexible for production Vercel domains, preview deployments, and local dev
-const corsOrigin = process.env.CORS_ORIGIN;
+// Security Headers Middleware (OWASP alignment / Strix recommendations)
+app.use((_req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  next();
+});
+
+// CORS configuration - Strict whitelist for production Vercel domains, preview deployments, and local dev
+const explicitOrigins = process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(',').map((o) => o.trim()) : [];
 app.use(
   cors({
-    origin: corsOrigin ? corsOrigin.split(',').map((o) => o.trim()) : true,
+    origin: (origin, callback) => {
+      // Allow requests with no origin (like mobile apps, curl, server-to-server)
+      if (!origin) return callback(null, true);
+
+      // Check explicit allowed origins
+      if (explicitOrigins.includes(origin)) return callback(null, true);
+
+      // Allow local development ports
+      if (/^https?:\/\/localhost(:\d+)?$/.test(origin) || /^https?:\/\/127\.0\.0\.1(:\d+)?$/.test(origin)) {
+        return callback(null, true);
+      }
+
+      // Allow Vercel preview and production deployments (*.vercel.app)
+      if (/^https:\/\/[a-zA-Z0-9_-]+\.vercel\.app$/.test(origin)) {
+        return callback(null, true);
+      }
+
+      // If in non-production, allow to facilitate testing
+      if (process.env.NODE_ENV !== 'production') {
+        return callback(null, true);
+      }
+
+      return callback(new Error('Bloqueado por política CORS'));
+    },
     credentials: true,
   })
 );

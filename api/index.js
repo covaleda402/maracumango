@@ -28,10 +28,73 @@ if (connectionString) {
 var isDatabaseConfigured = () => {
   return pool !== null;
 };
+var schemaEnsuredPromise = null;
+var ensureSchema = async () => {
+  if (!pool) return;
+  if (!schemaEnsuredPromise) {
+    schemaEnsuredPromise = (async () => {
+      try {
+        await pool.query(`
+          -- 1. Ensure Roles
+          CREATE TABLE IF NOT EXISTS roles (
+            id VARCHAR(50) PRIMARY KEY,
+            name VARCHAR(100) NOT NULL,
+            description TEXT
+          );
+
+          INSERT INTO roles (id, name, description) VALUES
+            ('ADMIN', 'Administrador', 'Acceso total a todas las sedes'),
+            ('WORKER', 'Trabajador', 'Acceso operativo restringido'),
+            ('CUSTOMER', 'Cliente', 'Cliente registrado')
+          ON CONFLICT (id) DO NOTHING;
+
+          -- 2. Ensure columns on users table
+          ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(50);
+          ALTER TABLE users ADD COLUMN IF NOT EXISTS default_address VARCHAR(255);
+          ALTER TABLE users ADD COLUMN IF NOT EXISTS accepted_terms BOOLEAN NOT NULL DEFAULT TRUE;
+          ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_accepted_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP;
+
+          -- 3. Ensure columns on orders table
+          ALTER TABLE orders ADD COLUMN IF NOT EXISTS customer_id VARCHAR(50);
+          ALTER TABLE orders ADD COLUMN IF NOT EXISTS customer_email VARCHAR(150);
+
+          -- 4. Password reset tokens table
+          CREATE TABLE IF NOT EXISTS password_reset_tokens (
+            id VARCHAR(100) PRIMARY KEY,
+            user_id VARCHAR(50) REFERENCES users(id) ON DELETE CASCADE,
+            email VARCHAR(150) NOT NULL,
+            code VARCHAR(10) NOT NULL,
+            expires_at TIMESTAMPTZ NOT NULL,
+            used BOOLEAN NOT NULL DEFAULT FALSE,
+            attempts INT NOT NULL DEFAULT 0,
+            created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+          );
+
+          -- 5. Security attempt logs (for rate limiting and lockouts)
+          CREATE TABLE IF NOT EXISTS security_attempt_logs (
+            identifier VARCHAR(150) PRIMARY KEY,
+            attempt_count INT NOT NULL DEFAULT 1,
+            blocked_until TIMESTAMPTZ,
+            last_attempt TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+          );
+
+          -- 6. Indexes for performance and safety
+          CREATE INDEX IF NOT EXISTS idx_users_email_lower ON users(LOWER(email));
+          CREATE INDEX IF NOT EXISTS idx_reset_email_code ON password_reset_tokens(email, code);
+        `);
+        console.log("\u2705 [Database]: Esquema, columnas (phone, default_address) y tablas de seguridad verificados/migrados.");
+      } catch (err) {
+        console.error("\u26A0\uFE0F [Database Schema Ensure Warning]:", err.message);
+      }
+    })();
+  }
+  return schemaEnsuredPromise;
+};
 var query = async (text, params) => {
   if (!pool) {
     throw new Error("DATABASE_URL no est\xE1 configurada en las variables de entorno.");
   }
+  await ensureSchema();
   const start = Date.now();
   try {
     const res = await pool.query(text, params);
@@ -1201,16 +1264,29 @@ import { Router as Router5 } from "express";
 var router5 = Router5();
 var devFallbackOrders = [...INITIAL_ORDERS];
 router5.get("/", async (req, res) => {
-  const role = (req.user?.role || req.headers["x-user-role"])?.toLowerCase();
-  const workerBranchId = req.user?.branchId || req.headers["x-branch-id"];
+  if (!req.user) {
+    return res.status(401).json({
+      error: "Sesi\xF3n requerida. Debes iniciar sesi\xF3n para consultar los pedidos."
+    });
+  }
+  const role = req.user.role.toLowerCase();
+  const workerBranchId = req.user.branchId;
   const filterBranchId = req.query.branchId;
   if (!isDatabaseConfigured()) {
     let orders = [...devFallbackOrders];
     if (role === "worker") {
       const activeBranch = workerBranchId || "sede-1";
       orders = orders.filter((o) => o.sedeId === activeBranch && o.status !== "PENDING_ADMIN" && o.status !== "CANCELLED");
-    } else if (filterBranchId && filterBranchId !== "all") {
-      orders = orders.filter((o) => o.sedeId === filterBranchId);
+    } else if (role === "customer") {
+      orders = orders.filter(
+        (o) => Boolean(o.customerId) && o.customerId === req.user?.id || Boolean(o.customerEmail) && o.customerEmail?.toLowerCase() === req.user?.email?.toLowerCase()
+      );
+    } else if (role === "admin") {
+      if (filterBranchId && filterBranchId !== "all") {
+        orders = orders.filter((o) => o.sedeId === filterBranchId);
+      }
+    } else {
+      return res.status(403).json({ error: "Acceso no autorizado." });
     }
     return res.json(orders);
   }
@@ -1264,11 +1340,17 @@ router5.get("/", async (req, res) => {
       params.push(branch);
       conditions.push(`o.branch_id = $${params.length}`);
       conditions.push(`o.status_id NOT IN ('PENDING_ADMIN', 'CANCELLED', 'Cancelado')`);
-    } else {
+    } else if (role === "customer") {
+      params.push(req.user.id);
+      params.push(req.user.email);
+      conditions.push(`(o.customer_id = $${params.length - 1} OR o.customer_email = $${params.length})`);
+    } else if (role === "admin") {
       if (filterBranchId && filterBranchId !== "all") {
         params.push(filterBranchId);
         conditions.push(`o.branch_id = $${params.length}`);
       }
+    } else {
+      return res.status(403).json({ error: "Rol no autorizado." });
     }
     if (conditions.length > 0) {
       sql += ` WHERE ` + conditions.join(" AND ");
@@ -1950,9 +2032,136 @@ var settings_default = router6;
 import { Router as Router7 } from "express";
 import bcrypt from "bcryptjs";
 import jwt2 from "jsonwebtoken";
+
+// server/middleware/securityLimiter.ts
+var inMemoryAttempts = /* @__PURE__ */ new Map();
+var MAX_ALLOWED_ATTEMPTS = 5;
+var LOCKOUT_MINUTES = 15;
+var LOCKOUT_MS = LOCKOUT_MINUTES * 60 * 1e3;
+var normalizeIdentifier = (prefix, key) => {
+  return `${prefix}:${key.toLowerCase().trim()}`;
+};
+var checkSecurityLockout = async (identifier) => {
+  const now = Date.now();
+  const mem = inMemoryAttempts.get(identifier);
+  if (mem && mem.blockedUntil && mem.blockedUntil > now) {
+    const remainingMinutes = Math.max(1, Math.ceil((mem.blockedUntil - now) / 6e4));
+    return {
+      isBlocked: true,
+      remainingMinutes,
+      message: `Has superado el l\xEDmite de intentos permitidos. Por seguridad, el acceso est\xE1 bloqueado durante ${remainingMinutes} minuto(s). Intenta m\xE1s tarde.`
+    };
+  }
+  if (isDatabaseConfigured()) {
+    try {
+      const res = await query(
+        `SELECT attempt_count, blocked_until FROM security_attempt_logs WHERE identifier = $1`,
+        [identifier]
+      );
+      if (res.rows.length > 0) {
+        const row = res.rows[0];
+        if (row.blocked_until) {
+          const dbBlockedUntil = new Date(row.blocked_until).getTime();
+          if (dbBlockedUntil > now) {
+            const remainingMinutes = Math.max(1, Math.ceil((dbBlockedUntil - now) / 6e4));
+            inMemoryAttempts.set(identifier, {
+              count: row.attempt_count,
+              blockedUntil: dbBlockedUntil,
+              lastAttempt: now
+            });
+            return {
+              isBlocked: true,
+              remainingMinutes,
+              message: `Has superado el l\xEDmite de intentos permitidos. Por seguridad, el acceso est\xE1 bloqueado durante ${remainingMinutes} minuto(s). Intenta m\xE1s tarde.`
+            };
+          }
+        }
+      }
+    } catch (err) {
+      console.warn("\u26A0\uFE0F [securityLimiter]: Error al verificar bloqueo en BD:", err.message);
+    }
+  }
+  return { isBlocked: false };
+};
+var recordFailedAttempt = async (identifier) => {
+  const now = Date.now();
+  let currentCount = 1;
+  let blockedUntil = null;
+  const mem = inMemoryAttempts.get(identifier);
+  if (mem) {
+    if (mem.blockedUntil && mem.blockedUntil <= now) {
+      currentCount = 1;
+    } else {
+      currentCount = mem.count + 1;
+    }
+  }
+  if (currentCount >= MAX_ALLOWED_ATTEMPTS) {
+    blockedUntil = now + LOCKOUT_MS;
+  }
+  inMemoryAttempts.set(identifier, {
+    count: currentCount,
+    blockedUntil,
+    lastAttempt: now
+  });
+  if (isDatabaseConfigured()) {
+    try {
+      await query(
+        `INSERT INTO security_attempt_logs (identifier, attempt_count, blocked_until, last_attempt)
+         VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
+         ON CONFLICT (identifier) DO UPDATE SET
+           attempt_count = EXCLUDED.attempt_count,
+           blocked_until = EXCLUDED.blocked_until,
+           last_attempt = CURRENT_TIMESTAMP`,
+        [identifier, currentCount, blockedUntil ? new Date(blockedUntil).toISOString() : null]
+      );
+    } catch (err) {
+      console.warn("\u26A0\uFE0F [securityLimiter]: Error al registrar intento fallido en BD:", err.message);
+    }
+  }
+  if (currentCount >= MAX_ALLOWED_ATTEMPTS) {
+    return {
+      isBlocked: true,
+      attemptsLeft: 0,
+      remainingMinutes: LOCKOUT_MINUTES,
+      message: `Has superado el l\xEDmite de ${MAX_ALLOWED_ATTEMPTS} intentos permitidos. Por seguridad, el acceso para esta cuenta o dispositivo est\xE1 bloqueado durante ${LOCKOUT_MINUTES} minutos.`
+    };
+  }
+  const attemptsLeft = MAX_ALLOWED_ATTEMPTS - currentCount;
+  return {
+    isBlocked: false,
+    attemptsLeft,
+    message: `Credenciales o c\xF3digo incorrectos. Te quedan ${attemptsLeft} intento(s) permitido(s) antes del bloqueo temporal de ${LOCKOUT_MINUTES} minutos.`
+  };
+};
+var resetSecurityAttempts = async (identifier) => {
+  inMemoryAttempts.delete(identifier);
+  if (isDatabaseConfigured()) {
+    try {
+      await query(`DELETE FROM security_attempt_logs WHERE identifier = $1`, [identifier]);
+    } catch (err) {
+      console.warn("\u26A0\uFE0F [securityLimiter]: Error al limpiar intentos en BD:", err.message);
+    }
+  }
+};
+
+// server/routes/auth.ts
 var router7 = Router7();
 var JWT_SECRET2 = process.env.JWT_SECRET || "maracumango_super_secret_jwt_key_2026_prod";
 var devFallbackCustomers = [];
+var devFallbackResetTokens = [];
+var patchMissingUserColumns = async () => {
+  if (!isDatabaseConfigured()) return;
+  try {
+    await query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(50);
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS default_address VARCHAR(255);
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS accepted_terms BOOLEAN NOT NULL DEFAULT TRUE;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_accepted_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP;
+    `);
+  } catch (err) {
+    console.warn("\u26A0\uFE0F [patchMissingUserColumns]:", err.message);
+  }
+};
 router7.post("/register-customer", async (req, res) => {
   const { name, firstName, lastName, email, phone, password, defaultAddress, acceptedTerms } = req.body;
   const resolvedFirstName = (firstName || name || "").trim();
@@ -2022,12 +2231,28 @@ router7.post("/register-customer", async (req, res) => {
   try {
     const saltRounds = 10;
     const passwordHash = await bcrypt.hash(password, saltRounds);
-    const result = await query(
-      `INSERT INTO users (id, first_name, last_name, email, password_hash, role_id, phone, default_address, accepted_terms, terms_accepted_at, is_active)
-       VALUES ($1, $2, $3, $4, $5, 'CUSTOMER', $6, $7, TRUE, CURRENT_TIMESTAMP, TRUE)
-       RETURNING id, first_name AS "firstName", last_name AS "lastName", email, phone, default_address AS "defaultAddress", role_id AS "roleId", role_id AS role, accepted_terms AS "acceptedTerms"`,
-      [userId, resolvedFirstName, lastName ? lastName.trim() : null, cleanEmail, passwordHash, cleanPhone, cleanAddress || null]
-    );
+    let result;
+    try {
+      result = await query(
+        `INSERT INTO users (id, first_name, last_name, email, password_hash, role_id, phone, default_address, accepted_terms, terms_accepted_at, is_active)
+         VALUES ($1, $2, $3, $4, $5, 'CUSTOMER', $6, $7, TRUE, CURRENT_TIMESTAMP, TRUE)
+         RETURNING id, first_name AS "firstName", last_name AS "lastName", email, phone, default_address AS "defaultAddress", role_id AS "roleId", role_id AS role, accepted_terms AS "acceptedTerms"`,
+        [userId, resolvedFirstName, lastName ? lastName.trim() : null, cleanEmail, passwordHash, cleanPhone, cleanAddress || null]
+      );
+    } catch (insertErr) {
+      if (insertErr.code === "42703") {
+        console.warn("\u26A0\uFE0F Columna faltante detectada al registrar. Aplicando parche estructural...");
+        await patchMissingUserColumns();
+        result = await query(
+          `INSERT INTO users (id, first_name, last_name, email, password_hash, role_id, phone, default_address, accepted_terms, terms_accepted_at, is_active)
+           VALUES ($1, $2, $3, $4, $5, 'CUSTOMER', $6, $7, TRUE, CURRENT_TIMESTAMP, TRUE)
+           RETURNING id, first_name AS "firstName", last_name AS "lastName", email, phone, default_address AS "defaultAddress", role_id AS "roleId", role_id AS role, accepted_terms AS "acceptedTerms"`,
+          [userId, resolvedFirstName, lastName ? lastName.trim() : null, cleanEmail, passwordHash, cleanPhone, cleanAddress || null]
+        );
+      } else {
+        throw insertErr;
+      }
+    }
     const customerRow = result.rows[0];
     const customerPayload = {
       id: customerRow.id,
@@ -2035,8 +2260,8 @@ router7.post("/register-customer", async (req, res) => {
       firstName: customerRow.firstName,
       lastName: customerRow.lastName,
       email: customerRow.email,
-      phone: customerRow.phone,
-      defaultAddress: customerRow.defaultAddress,
+      phone: customerRow.phone || cleanPhone,
+      defaultAddress: customerRow.defaultAddress || cleanAddress,
       role: "CUSTOMER",
       roleId: "CUSTOMER",
       branchId: null,
@@ -2062,8 +2287,29 @@ router7.post("/login", async (req, res) => {
     return res.status(400).json({ error: "Email y contrase\xF1a requeridos." });
   }
   const cleanEmail = email.toLowerCase().trim();
+  const clientIp = req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.ip || "unknown_ip";
+  const emailKey = normalizeIdentifier("login", cleanEmail);
+  const ipKey = normalizeIdentifier("login_ip", clientIp);
+  const emailLock = await checkSecurityLockout(emailKey);
+  if (emailLock.isBlocked) {
+    return res.status(429).json({
+      error: emailLock.message,
+      blocked: true,
+      remainingMinutes: emailLock.remainingMinutes
+    });
+  }
+  const ipLock = await checkSecurityLockout(ipKey);
+  if (ipLock.isBlocked) {
+    return res.status(429).json({
+      error: ipLock.message,
+      blocked: true,
+      remainingMinutes: ipLock.remainingMinutes
+    });
+  }
   if (!isDatabaseConfigured()) {
     if (cleanEmail === "admin@maracumango.com" && password === "admin123") {
+      await resetSecurityAttempts(emailKey);
+      await resetSecurityAttempts(ipKey);
       const user = {
         id: "user-admin-1",
         name: "Administrador Maracumango",
@@ -2079,6 +2325,8 @@ router7.post("/login", async (req, res) => {
       return res.json({ token, user });
     }
     if (cleanEmail === "carlos@maracumango.com" && password === "worker123") {
+      await resetSecurityAttempts(emailKey);
+      await resetSecurityAttempts(ipKey);
       const user = {
         id: "user-worker-1",
         name: "Carlos G\xF3mez",
@@ -2098,6 +2346,8 @@ router7.post("/login", async (req, res) => {
     if (devCust) {
       const isValid = await bcrypt.compare(password, devCust.passwordHash);
       if (isValid) {
+        await resetSecurityAttempts(emailKey);
+        await resetSecurityAttempts(ipKey);
         const tokenPayload = {
           id: devCust.id,
           name: devCust.name,
@@ -2114,20 +2364,57 @@ router7.post("/login", async (req, res) => {
         return res.json({ token, user: tokenPayload, message: "Inicio de sesi\xF3n exitoso." });
       }
     }
-    return res.status(401).json({ error: "Credenciales inv\xE1lidas." });
+    const failEmail = await recordFailedAttempt(emailKey);
+    await recordFailedAttempt(ipKey);
+    return res.status(failEmail.isBlocked ? 429 : 401).json({
+      error: failEmail.message,
+      blocked: failEmail.isBlocked,
+      attemptsLeft: failEmail.attemptsLeft,
+      remainingMinutes: failEmail.remainingMinutes
+    });
   }
   try {
-    const userRes = await query(
-      `SELECT u.id, u.first_name, u.last_name, u.email, u.password_hash, u.role_id, u.branch_id, u.is_active,
-              u.phone, u.default_address, u.accepted_terms,
-              b.name AS branch_name
-       FROM users u
-       LEFT JOIN branches b ON b.id = u.branch_id
-       WHERE LOWER(u.email) = $1`,
-      [cleanEmail]
-    );
+    let userRes;
+    try {
+      userRes = await query(
+        `SELECT u.id, u.first_name, u.last_name, u.email, u.password_hash, u.role_id, u.branch_id, u.is_active,
+                COALESCE(u.phone, '') AS phone,
+                COALESCE(u.default_address, '') AS default_address,
+                COALESCE(u.accepted_terms, TRUE) AS accepted_terms,
+                b.name AS branch_name
+         FROM users u
+         LEFT JOIN branches b ON b.id = u.branch_id
+         WHERE LOWER(u.email) = $1`,
+        [cleanEmail]
+      );
+    } catch (queryErr) {
+      if (queryErr.code === "42703") {
+        console.warn("\u26A0\uFE0F Columna u.phone o u.default_address faltante. Parcheando esquema y reintentando login...");
+        await patchMissingUserColumns();
+        userRes = await query(
+          `SELECT u.id, u.first_name, u.last_name, u.email, u.password_hash, u.role_id, u.branch_id, u.is_active,
+                  COALESCE(u.phone, '') AS phone,
+                  COALESCE(u.default_address, '') AS default_address,
+                  COALESCE(u.accepted_terms, TRUE) AS accepted_terms,
+                  b.name AS branch_name
+           FROM users u
+           LEFT JOIN branches b ON b.id = u.branch_id
+           WHERE LOWER(u.email) = $1`,
+          [cleanEmail]
+        );
+      } else {
+        throw queryErr;
+      }
+    }
     if (userRes.rows.length === 0) {
-      return res.status(401).json({ error: "Credenciales incorrectas o usuario no registrado." });
+      const fail = await recordFailedAttempt(emailKey);
+      await recordFailedAttempt(ipKey);
+      return res.status(fail.isBlocked ? 429 : 401).json({
+        error: fail.message,
+        blocked: fail.isBlocked,
+        attemptsLeft: fail.attemptsLeft,
+        remainingMinutes: fail.remainingMinutes
+      });
     }
     const userRow = userRes.rows[0];
     if (!userRow.is_active) {
@@ -2135,16 +2422,25 @@ router7.post("/login", async (req, res) => {
     }
     const isValid = await bcrypt.compare(password, userRow.password_hash);
     if (!isValid) {
-      return res.status(401).json({ error: "Credenciales incorrectas." });
+      const fail = await recordFailedAttempt(emailKey);
+      await recordFailedAttempt(ipKey);
+      return res.status(fail.isBlocked ? 429 : 401).json({
+        error: fail.message,
+        blocked: fail.isBlocked,
+        attemptsLeft: fail.attemptsLeft,
+        remainingMinutes: fail.remainingMinutes
+      });
     }
+    await resetSecurityAttempts(emailKey);
+    await resetSecurityAttempts(ipKey);
     const userPayload = {
       id: userRow.id,
       name: `${userRow.first_name} ${userRow.last_name || ""}`.trim(),
       firstName: userRow.first_name,
       lastName: userRow.last_name,
       email: userRow.email,
-      phone: userRow.phone,
-      defaultAddress: userRow.default_address,
+      phone: userRow.phone || "",
+      defaultAddress: userRow.default_address || "",
       role: userRow.role_id,
       roleId: userRow.role_id,
       branchId: userRow.branch_id,
@@ -2159,6 +2455,163 @@ router7.post("/login", async (req, res) => {
     });
   } catch (error) {
     console.error("Error during login:", error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+router7.post("/forgot-password", async (req, res) => {
+  const { email } = req.body;
+  if (!email || !VALID_EMAIL_REGEX.test(email)) {
+    return res.status(400).json({ error: "Por favor ingresa un correo electr\xF3nico v\xE1lido." });
+  }
+  const cleanEmail = email.toLowerCase().trim();
+  const clientIp = req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.ip || "unknown_ip";
+  const emailKey = normalizeIdentifier("reset", cleanEmail);
+  const ipKey = normalizeIdentifier("reset_ip", clientIp);
+  const emailLock = await checkSecurityLockout(emailKey);
+  if (emailLock.isBlocked) {
+    return res.status(429).json({
+      error: emailLock.message,
+      blocked: true,
+      remainingMinutes: emailLock.remainingMinutes
+    });
+  }
+  const ipLock = await checkSecurityLockout(ipKey);
+  if (ipLock.isBlocked) {
+    return res.status(429).json({
+      error: ipLock.message,
+      blocked: true,
+      remainingMinutes: ipLock.remainingMinutes
+    });
+  }
+  const code = Math.floor(1e5 + Math.random() * 9e5).toString();
+  const expiresAt = Date.now() + 15 * 60 * 1e3;
+  const tokenId = `rst-${Date.now()}`;
+  if (!isDatabaseConfigured()) {
+    devFallbackResetTokens.push({
+      id: tokenId,
+      email: cleanEmail,
+      code,
+      expiresAt,
+      used: false
+    });
+    return res.json({
+      message: "C\xF3digo de recuperaci\xF3n de 6 d\xEDgitos generado exitosamente. V\xE1lido por 15 minutos.",
+      code,
+      email: cleanEmail,
+      expiresInMinutes: 15
+    });
+  }
+  try {
+    const userCheck = await query("SELECT id, first_name FROM users WHERE LOWER(email) = $1", [cleanEmail]);
+    if (userCheck.rows.length === 0) {
+      await recordFailedAttempt(emailKey);
+      await recordFailedAttempt(ipKey);
+      return res.status(404).json({
+        error: "No se encontr\xF3 ninguna cuenta registrada con este correo electr\xF3nico."
+      });
+    }
+    const user = userCheck.rows[0];
+    await query("UPDATE password_reset_tokens SET used = TRUE WHERE LOWER(email) = $1", [cleanEmail]);
+    await query(
+      `INSERT INTO password_reset_tokens (id, user_id, email, code, expires_at, used)
+       VALUES ($1, $2, $3, $4, $5, FALSE)`,
+      [tokenId, user.id, cleanEmail, code, new Date(expiresAt).toISOString()]
+    );
+    res.json({
+      message: "C\xF3digo de recuperaci\xF3n de 6 d\xEDgitos generado exitosamente. V\xE1lido por 15 minutos.",
+      code,
+      // Returned for instant user feedback and demo/recovery in UI
+      email: cleanEmail,
+      expiresInMinutes: 15
+    });
+  } catch (error) {
+    console.error("Error generating reset code:", error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+router7.post("/reset-password", async (req, res) => {
+  const { email, code, newPassword } = req.body;
+  if (!email || !code || !newPassword) {
+    return res.status(400).json({ error: "Correo, c\xF3digo de 6 d\xEDgitos y nueva contrase\xF1a son obligatorios." });
+  }
+  const cleanEmail = email.toLowerCase().trim();
+  const cleanCode = String(code).trim();
+  const clientIp = req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.ip || "unknown_ip";
+  const emailKey = normalizeIdentifier("reset", cleanEmail);
+  const ipKey = normalizeIdentifier("reset_ip", clientIp);
+  const emailLock = await checkSecurityLockout(emailKey);
+  if (emailLock.isBlocked) {
+    return res.status(429).json({
+      error: emailLock.message,
+      blocked: true,
+      remainingMinutes: emailLock.remainingMinutes
+    });
+  }
+  const ipLock = await checkSecurityLockout(ipKey);
+  if (ipLock.isBlocked) {
+    return res.status(429).json({
+      error: ipLock.message,
+      blocked: true,
+      remainingMinutes: ipLock.remainingMinutes
+    });
+  }
+  if (newPassword.length < 6) {
+    return res.status(400).json({ error: "La nueva contrase\xF1a debe tener al menos 6 caracteres." });
+  }
+  if (!isDatabaseConfigured()) {
+    const validToken = devFallbackResetTokens.find(
+      (t) => t.email === cleanEmail && t.code === cleanCode && !t.used && t.expiresAt > Date.now()
+    );
+    if (!validToken) {
+      const fail = await recordFailedAttempt(emailKey);
+      await recordFailedAttempt(ipKey);
+      return res.status(fail.isBlocked ? 429 : 400).json({
+        error: `C\xF3digo de recuperaci\xF3n incorrecto o vencido. ${fail.message}`,
+        blocked: fail.isBlocked,
+        attemptsLeft: fail.attemptsLeft
+      });
+    }
+    validToken.used = true;
+    const newHash = await bcrypt.hash(newPassword, 10);
+    const devCust = devFallbackCustomers.find((c) => c.email === cleanEmail);
+    if (devCust) {
+      devCust.passwordHash = newHash;
+    }
+    await resetSecurityAttempts(emailKey);
+    await resetSecurityAttempts(ipKey);
+    return res.json({ message: "Contrase\xF1a restablecida exitosamente. Ya puedes iniciar sesi\xF3n con tu nueva contrase\xF1a." });
+  }
+  try {
+    const tokenRes = await query(
+      `SELECT id, user_id FROM password_reset_tokens
+       WHERE LOWER(email) = $1 AND code = $2 AND used = FALSE AND expires_at > CURRENT_TIMESTAMP
+       ORDER BY created_at DESC LIMIT 1`,
+      [cleanEmail, cleanCode]
+    );
+    if (tokenRes.rows.length === 0) {
+      const fail = await recordFailedAttempt(emailKey);
+      await recordFailedAttempt(ipKey);
+      return res.status(fail.isBlocked ? 429 : 400).json({
+        error: `C\xF3digo de verificaci\xF3n incorrecto o expirado. ${fail.message}`,
+        blocked: fail.isBlocked,
+        attemptsLeft: fail.attemptsLeft,
+        remainingMinutes: fail.remainingMinutes
+      });
+    }
+    const tokenRow = tokenRes.rows[0];
+    const newHash = await bcrypt.hash(newPassword, 10);
+    await query(
+      `UPDATE users SET password_hash = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
+      [newHash, tokenRow.user_id]
+    );
+    await query(`UPDATE password_reset_tokens SET used = TRUE WHERE id = $1`, [tokenRow.id]);
+    await resetSecurityAttempts(emailKey);
+    await resetSecurityAttempts(ipKey);
+    res.json({
+      message: "\xA1Contrase\xF1a restablecida con \xE9xito! Ya puedes iniciar sesi\xF3n en Maracumango con tu nueva contrase\xF1a."
+    });
+  } catch (error) {
+    console.error("Error resetting password:", error.message);
     res.status(500).json({ error: error.message });
   }
 });
@@ -2449,10 +2902,31 @@ function initOrderRetentionScheduler() {
 dotenv2.config();
 var app = express();
 var PORT = process.env.PORT || 3001;
-var corsOrigin = process.env.CORS_ORIGIN;
+app.use((_req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("X-XSS-Protection", "1; mode=block");
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+  next();
+});
+var explicitOrigins = process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(",").map((o) => o.trim()) : [];
 app.use(
   cors({
-    origin: corsOrigin ? corsOrigin.split(",").map((o) => o.trim()) : true,
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true);
+      if (explicitOrigins.includes(origin)) return callback(null, true);
+      if (/^https?:\/\/localhost(:\d+)?$/.test(origin) || /^https?:\/\/127\.0\.0\.1(:\d+)?$/.test(origin)) {
+        return callback(null, true);
+      }
+      if (/^https:\/\/[a-zA-Z0-9_-]+\.vercel\.app$/.test(origin)) {
+        return callback(null, true);
+      }
+      if (process.env.NODE_ENV !== "production") {
+        return callback(null, true);
+      }
+      return callback(new Error("Bloqueado por pol\xEDtica CORS"));
+    },
     credentials: true
   })
 );

@@ -199,7 +199,7 @@ El proyecto está estructurado y optimizado para desplegarse fácilmente en **Ve
 | `npm run dev:client` | Inicia únicamente el servidor de desarrollo de Vite. |
 | `npm run dev:server` | Inicia únicamente el servidor backend con recarga automática (`tsx watch`). |
 | `npm run build` | Compila el proyecto TypeScript y genera el bundle estático de producción con Vite. |
-| `npm test` | Ejecuta la suite integral de 27 pruebas automatizadas de seguridad, usabilidad y persistencia. |
+| `npm test` | Ejecuta la suite integral de 43 pruebas automatizadas de seguridad, limitación de intentos, recuperación de cuentas, RBAC y persistencia. |
 | `npm run lint` | Ejecuta el análisis estático de código mediante `oxlint`. |
 | `npm run preview` | Previsualiza localmente la compilación de producción generada en `dist`. |
 | `npm run db:migrate` | Ejecuta las migraciones SQL en la base de datos configurada. |

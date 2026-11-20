@@ -9,10 +9,16 @@ const router = Router();
 // In-memory fallback orders for development/testing when database is offline
 const devFallbackOrders: any[] = [...INITIAL_ORDERS];
 
-// GET /api/orders — List orders according to role and branch scope
+// GET /api/orders — List orders according to role and branch scope (Enforces Strict RBAC & Isolation)
 router.get('/', async (req: Request, res: Response) => {
-  const role = (req.user?.role || req.headers['x-user-role'] as string)?.toLowerCase();
-  const workerBranchId = req.user?.branchId || (req.headers['x-branch-id'] as string);
+  if (!req.user) {
+    return res.status(401).json({
+      error: 'Sesión requerida. Debes iniciar sesión para consultar los pedidos.',
+    });
+  }
+
+  const role = req.user.role.toLowerCase();
+  const workerBranchId = req.user.branchId;
   const filterBranchId = req.query.branchId as string;
 
   if (!isDatabaseConfigured()) {
@@ -20,8 +26,18 @@ router.get('/', async (req: Request, res: Response) => {
     if (role === 'worker') {
       const activeBranch = workerBranchId || 'sede-1';
       orders = orders.filter((o) => o.sedeId === activeBranch && (o.status as string) !== 'PENDING_ADMIN' && (o.status as string) !== 'CANCELLED');
-    } else if (filterBranchId && filterBranchId !== 'all') {
-      orders = orders.filter((o) => o.sedeId === filterBranchId);
+    } else if (role === 'customer') {
+      orders = orders.filter(
+        (o) =>
+          (Boolean(o.customerId) && o.customerId === req.user?.id) ||
+          (Boolean(o.customerEmail) && o.customerEmail?.toLowerCase() === req.user?.email?.toLowerCase())
+      );
+    } else if (role === 'admin') {
+      if (filterBranchId && filterBranchId !== 'all') {
+        orders = orders.filter((o) => o.sedeId === filterBranchId);
+      }
+    } else {
+      return res.status(403).json({ error: 'Acceso no autorizado.' });
     }
     return res.json(orders);
   }
@@ -73,21 +89,28 @@ router.get('/', async (req: Request, res: Response) => {
     const conditions: string[] = [];
     const params: any[] = [];
 
-    // WORKER ACCESS ENFORCEMENT:
-    // 1. Worker can ONLY see orders for their assigned branch.
-    // 2. Worker CANNOT see orders in 'PENDING_ADMIN' status (admin must accept first).
-    // 3. Worker CANNOT see cancelled orders.
+    // RBAC STRICT ENFORCEMENT:
     if (role === 'worker') {
+      // 1. Worker can ONLY see orders for their assigned branch.
+      // 2. Worker CANNOT see orders in 'PENDING_ADMIN' status (admin must accept first).
+      // 3. Worker CANNOT see cancelled orders.
       const branch = workerBranchId || 'sede-1';
       params.push(branch);
       conditions.push(`o.branch_id = $${params.length}`);
       conditions.push(`o.status_id NOT IN ('PENDING_ADMIN', 'CANCELLED', 'Cancelado')`);
-    } else {
-      // ADMIN ACCESS:
+    } else if (role === 'customer') {
+      // Customer can ONLY see their own orders (BOLA/IDOR protection)
+      params.push(req.user.id);
+      params.push(req.user.email);
+      conditions.push(`(o.customer_id = $${params.length - 1} OR o.customer_email = $${params.length})`);
+    } else if (role === 'admin') {
+      // Admin can filter by branch or see all
       if (filterBranchId && filterBranchId !== 'all') {
         params.push(filterBranchId);
         conditions.push(`o.branch_id = $${params.length}`);
       }
+    } else {
+      return res.status(403).json({ error: 'Rol no autorizado.' });
     }
 
     if (conditions.length > 0) {

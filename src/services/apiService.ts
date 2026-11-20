@@ -507,6 +507,44 @@ export const apiService = {
     }
   },
 
+  async forgotPassword(email: string): Promise<{ success: boolean; message?: string; code?: string; error?: string; blocked?: boolean }> {
+    try {
+      const res = await fetch(`${BASE_URL}/auth/forgot-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        return { success: true, message: data.message, code: data.code };
+      }
+      return { success: false, error: data.error || 'Error al solicitar código.', blocked: !!data.blocked };
+    } catch {
+      return { success: false, error: 'Error de red al conectar con el servidor.' };
+    }
+  },
+
+  async resetPassword(resetData: {
+    email: string;
+    code: string;
+    newPassword: string;
+  }): Promise<{ success: boolean; message?: string; error?: string; blocked?: boolean }> {
+    try {
+      const res = await fetch(`${BASE_URL}/auth/reset-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(resetData),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        return { success: true, message: data.message };
+      }
+      return { success: false, error: data.error || 'Error al restablecer contraseña.', blocked: !!data.blocked };
+    } catch {
+      return { success: false, error: 'Error de red al conectar con el servidor.' };
+    }
+  },
+
   async updateProfile(profileData: {
     name?: string;
     phone?: string;

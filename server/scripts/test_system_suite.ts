@@ -42,6 +42,7 @@ async function startSuite() {
   try {
     let customerToken = '';
     let _customerUserId = '';
+    let registeredCustomerEmail = '';
     let adminToken = '';
     let workerToken = '';
     let createdOrderId = '';
@@ -129,6 +130,7 @@ async function startSuite() {
 
       customerToken = data.token;
       _customerUserId = data.user.id;
+      registeredCustomerEmail = uniqueEmail;
     }, baseUrl);
 
     await runTest('Seguridad', '1.6 Login de Administrador con credenciales válidas', async (url) => {
@@ -508,6 +510,233 @@ async function startSuite() {
       const health = await res.json();
       if (health.status !== 'ok') {
         throw new Error(`Estado de salud inválido: ${JSON.stringify(health)}`);
+      }
+    }, baseUrl);
+
+    // ====================================================================
+    // SUITE 6: PROTECCIÓN CONTRA FUERZA BRUTA Y BLOQUEO DE 15 MINUTOS (STRIX AUDIT)
+    // ====================================================================
+    console.log('\n--- ⏱️ SUITE 6: LIMITACIÓN DE INTENTOS Y BLOQUEO DE 15 MINUTOS ---');
+
+    const testBruteEmail = `brute_victim_${Date.now()}@correo.com`;
+
+    // First register user to test login failure lockouts
+    await runTest('Fuerza Bruta', '6.1 Registrar usuario para pruebas de bloqueo', async (url) => {
+      const res = await fetch(`${url}/auth/register-customer`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: 'Usuario Bloqueo',
+          email: testBruteEmail,
+          phone: '3189998877',
+          password: 'passwordCorrecta123',
+          acceptedTerms: true,
+        }),
+      });
+      if (!res.ok) throw new Error(`Error registrando usuario para prueba de bloqueo: ${res.status}`);
+    }, baseUrl);
+
+    await runTest('Fuerza Bruta', '6.2 Intentos 1 a 4 reportan credenciales incorrectas y descuentan intentos restantes', async (url) => {
+      for (let i = 1; i <= 4; i++) {
+        const res = await fetch(`${url}/auth/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-forwarded-for': '198.51.100.99' },
+          body: JSON.stringify({ email: testBruteEmail, password: 'contrasena_equivocada' }),
+        });
+
+        if (res.status !== 401) {
+          throw new Error(`Intento ${i}: Se esperaba 401, se obtuvo ${res.status}`);
+        }
+        const data = await res.json();
+        if (data.attemptsLeft === undefined || data.attemptsLeft !== 5 - i) {
+          throw new Error(`Intento ${i}: Intentos restantes esperados ${5 - i}, se obtuvo: ${data.attemptsLeft}`);
+        }
+      }
+    }, baseUrl);
+
+    await runTest('Fuerza Bruta', '6.3 El 5to intento fallido activa el bloqueo de 15 minutos (HTTP 429)', async (url) => {
+      const res = await fetch(`${url}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-forwarded-for': '198.51.100.99' },
+        body: JSON.stringify({ email: testBruteEmail, password: 'contrasena_equivocada' }),
+      });
+
+      if (res.status !== 429) {
+        throw new Error(`Se esperaba HTTP 429 Too Many Requests al alcanzar 5 intentos fallidos, se obtuvo: ${res.status}`);
+      }
+      const data = await res.json();
+      if (!data.blocked || data.remainingMinutes === undefined) {
+        throw new Error(`Respuesta de bloqueo inválida: ${JSON.stringify(data)}`);
+      }
+    }, baseUrl);
+
+    await runTest('Fuerza Bruta', '6.4 Petición subsiguiente durante los 15 minutos de bloqueo es rechazada de inmediato', async (url) => {
+      const res = await fetch(`${url}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-forwarded-for': '198.51.100.99' },
+        body: JSON.stringify({ email: testBruteEmail, password: 'passwordCorrecta123' }),
+      });
+
+      if (res.status !== 429) {
+        throw new Error(`La cuenta debe continuar bloqueada con 429, se obtuvo: ${res.status}`);
+      }
+    }, baseUrl);
+
+    // ====================================================================
+    // SUITE 7: RECUPERACIÓN SEGURA DE CONTRASEÑAS (FLUX 15 MINUTOS)
+    // ====================================================================
+    console.log('\n--- 🔑 SUITE 7: RECUPERACIÓN SEGURA DE CONTRASEÑAS ---');
+
+    const recoveryEmail = `recover_${Date.now()}@correo.com`;
+    let generatedResetCode = '';
+
+    await runTest('Recuperación', '7.1 Registrar usuario para prueba de recuperación', async (url) => {
+      const res = await fetch(`${url}/auth/register-customer`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: 'Usuario Recuperar',
+          email: recoveryEmail,
+          phone: '3161112233',
+          password: 'passwordAntigua123',
+          acceptedTerms: true,
+        }),
+      });
+      if (!res.ok) throw new Error(`Error en registro: ${res.status}`);
+    }, baseUrl);
+
+    await runTest('Recuperación', '7.2 Solicitar código de recuperación genera código de 6 dígitos válido por 15 minutos', async (url) => {
+      const res = await fetch(`${url}/auth/forgot-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: recoveryEmail }),
+      });
+
+      if (!res.ok) throw new Error(`Fallo solicitando código: ${res.status}`);
+      const data = await res.json();
+      if (!data.code || data.code.length !== 6) {
+        throw new Error(`Código de 6 dígitos no retornado: ${JSON.stringify(data)}`);
+      }
+      generatedResetCode = data.code;
+    }, baseUrl);
+
+    await runTest('Recuperación', '7.3 Rechazar restablecimiento con código incorrecto', async (url) => {
+      const res = await fetch(`${url}/auth/reset-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: recoveryEmail,
+          code: '000000',
+          newPassword: 'nuevaPassword123',
+        }),
+      });
+
+      if (res.status !== 400 && res.status !== 429) {
+        throw new Error(`Se esperaba rechazo con 400/429, se obtuvo: ${res.status}`);
+      }
+    }, baseUrl);
+
+    await runTest('Recuperación', '7.4 Restablecer contraseña con código correcto y nueva contraseña válida', async (url) => {
+      const res = await fetch(`${url}/auth/reset-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: recoveryEmail,
+          code: generatedResetCode,
+          newPassword: 'nuevaPassword2026!',
+        }),
+      });
+
+      if (!res.ok) throw new Error(`Fallo restableciendo contraseña: ${res.status}`);
+    }, baseUrl);
+
+    await runTest('Recuperación', '7.5 Iniciar sesión con la nueva contraseña funciona exitosamente', async (url) => {
+      const res = await fetch(`${url}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: recoveryEmail,
+          password: 'nuevaPassword2026!',
+        }),
+      });
+
+      if (!res.ok) throw new Error(`No se pudo iniciar sesión con la nueva contraseña: ${res.status}`);
+      const data = await res.json();
+      if (!data.token) throw new Error(`Token no emitido tras restablecimiento.`);
+    }, baseUrl);
+
+    // ====================================================================
+    // SUITE 8: BLINDAJE BOLA / IDOR, CABECERAS HTTP Y AISLAMIENTO DE PEDIDOS
+    // ====================================================================
+    console.log('\n--- 🛡️ SUITE 8: BLINDAJE BOLA / IDOR Y CABECERAS DE SEGURIDAD ---');
+
+    await runTest('BOLA Protection', '8.1 Rechazar consulta de pedidos si NO está autenticado (401)', async (url) => {
+      const res = await fetch(`${url}/orders`);
+      if (res.status !== 401) {
+        throw new Error(`Vulnerabilidad BOLA: se esperaba 401 Unauthorized sin token, se obtuvo: ${res.status}`);
+      }
+    }, baseUrl);
+
+    await runTest('BOLA Protection', '8.2 Cliente autenticado en GET /orders solo recibe sus propios pedidos', async (url) => {
+      const res = await fetch(`${url}/orders`, {
+        headers: { Authorization: `Bearer ${customerToken}` },
+      });
+
+      if (!res.ok) throw new Error(`Fallo consultando pedidos de cliente: ${res.status}`);
+      const orders: any[] = await res.json();
+      // Verify every order belongs to this customer
+      for (const ord of orders) {
+        if (ord.customerEmail && ord.customerEmail !== registeredCustomerEmail) {
+          throw new Error(`Fuga de datos BOLA: Se recibió pedido perteneciente a otro cliente (${ord.customerEmail} vs ${registeredCustomerEmail}).`);
+        }
+      }
+    }, baseUrl);
+
+    await runTest('Cabeceras HTTP', '8.3 Verificar cabeceras de blindaje OWASP (X-Content-Type-Options, X-Frame-Options)', async (url) => {
+      const res = await fetch(`${url}/health`);
+      const nosniff = res.headers.get('x-content-type-options');
+      const frameOptions = res.headers.get('x-frame-options');
+
+      if (nosniff !== 'nosniff') {
+        throw new Error(`Falta cabecera X-Content-Type-Options: nosniff`);
+      }
+      if (frameOptions !== 'DENY') {
+        throw new Error(`Falta cabecera X-Frame-Options: DENY`);
+      }
+    }, baseUrl);
+
+    // ====================================================================
+    // SUITE 9: GESTIÓN DE CONFIGURACIÓN, SEDES Y PRODUCTOS (AMPLIACIÓN DE COBERTURA)
+    // ====================================================================
+    console.log('\n--- 📈 SUITE 9: GESTIÓN DE CONFIGURACIÓN Y SEDES (AMPLIACIÓN DE COBERTURA) ---');
+
+    await runTest('Configuración', '9.1 Consulta de identidad de negocio y configuración visual', async (url) => {
+      const res = await fetch(`${url}/settings`);
+      if (!res.ok) throw new Error(`Fallo consultando settings: ${res.status}`);
+      const settings = await res.json();
+      if (!settings.businessName) throw new Error(`Nombre del negocio no retornado.`);
+    }, baseUrl);
+
+    await runTest('Sedes', '9.2 Consulta de sede específica por ID (/branches/:id)', async (url) => {
+      const res = await fetch(`${url}/branches/sede-1`);
+      if (!res.ok) throw new Error(`Fallo consultando sede-1: ${res.status}`);
+      const sede = await res.json();
+      if (sede.id !== 'sede-1') throw new Error(`ID de sede incorrecto: ${sede.id}`);
+    }, baseUrl);
+
+    await runTest('Sedes', '9.3 Consulta de sede inexistente retorna HTTP 404', async (url) => {
+      const res = await fetch(`${url}/branches/sede_fantasma_999`);
+      if (res.status !== 404) {
+        throw new Error(`Se esperaba 404 para sede inexistente, se obtuvo: ${res.status}`);
+      }
+    }, baseUrl);
+
+    await runTest('Insumos', '9.4 Consulta de ingredientes base e insumos', async (url) => {
+      const res = await fetch(`${url}/ingredients`);
+      if (!res.ok) throw new Error(`Fallo consultando ingredientes: ${res.status}`);
+      const ings: any[] = await res.json();
+      if (!Array.isArray(ings) || ings.length === 0) {
+        throw new Error(`Se esperaba listado de ingredientes.`);
       }
     }, baseUrl);
 

@@ -69,8 +69,15 @@ Para garantizar la entrega puntual de tus domicilios y evitar pedidos no verific
    - Puedes hacer clic en el enlace para leer el detalle completo: se explica que tus datos se usan **exclusivamente para la logística del pedido y facturación**, se protegen con cifrado SSL y puedes solicitar su actualización o supresión en cualquier momento.
 5. Presiona **"Crear Cuenta"**. Tu sesión se iniciará automáticamente.
 
-### 2.4 Inicio de Sesión y Gestión de Perfil
+### 2.4 Inicio de Sesión, Recuperación de Contraseña y Bloqueo de Seguridad
 - Si ya tienes cuenta registrada, ingresa con tu correo y contraseña en la pestaña **"Iniciar Sesión"**.
+- **Límite de Intentos y Bloqueo por Fuerza Bruta:** Por motivos de seguridad, se permite un máximo de **5 intentos** fallidos de contraseña. Si se supera este límite, el sistema activa un **bloqueo temporal de 15 minutos** para proteger la cuenta contra accesos no autorizados.
+- **Recuperación de Contraseña:**
+  1. Si olvidaste tu contraseña, haz clic en el enlace **"¿Olvidaste tu contraseña?"** debajo del campo de contraseña.
+  2. Ingresa tu correo electrónico registrado y presiona **"Obtener Código de Recuperación"**.
+  3. El sistema generará un código de verificación de 6 dígitos con vigencia de **15 minutos**.
+  4. Ingresa el código recibido junto con tu nueva contraseña (mínimo 6 caracteres) y confirma el cambio.
+  5. ¡Listo! Tu contraseña quedará actualizada de inmediato y podrás ingresar a tu cuenta.
 - Una vez autenticado, verás en la barra superior tu saludo personalizado: *"Hola, [Tu Nombre]"*.
 - Al hacer clic sobre tu nombre, puedes actualizar tu número de celular o dirección predeterminada en cualquier momento.
 

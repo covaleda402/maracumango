@@ -4,12 +4,42 @@ import jwt from 'jsonwebtoken';
 import { query, isDatabaseConfigured } from '../db';
 import { requireAdmin } from '../middleware/auth';
 import { VALID_EMAIL_REGEX } from '../middleware/validate';
+import {
+  checkSecurityLockout,
+  recordFailedAttempt,
+  resetSecurityAttempts,
+  normalizeIdentifier,
+} from '../middleware/securityLimiter';
 
 const router = Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'maracumango_super_secret_jwt_key_2026_prod';
 
 // In-memory customer storage fallback for offline / development testing without active DB
 const devFallbackCustomers: any[] = [];
+
+interface DevResetToken {
+  id: string;
+  email: string;
+  code: string;
+  expiresAt: number;
+  used: boolean;
+}
+const devFallbackResetTokens: DevResetToken[] = [];
+
+// Helper to patch database schema on the fly if columns are missing
+const patchMissingUserColumns = async () => {
+  if (!isDatabaseConfigured()) return;
+  try {
+    await query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(50);
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS default_address VARCHAR(255);
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS accepted_terms BOOLEAN NOT NULL DEFAULT TRUE;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_accepted_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP;
+    `);
+  } catch (err: any) {
+    console.warn('⚠️ [patchMissingUserColumns]:', err.message);
+  }
+};
 
 // POST /api/auth/register-customer — Customer registration with mandatory Terms & Habeas Data acceptance
 router.post('/register-customer', async (req: Request, res: Response) => {
@@ -96,12 +126,29 @@ router.post('/register-customer', async (req: Request, res: Response) => {
     const saltRounds = 10;
     const passwordHash = await bcrypt.hash(password, saltRounds);
 
-    const result = await query(
-      `INSERT INTO users (id, first_name, last_name, email, password_hash, role_id, phone, default_address, accepted_terms, terms_accepted_at, is_active)
-       VALUES ($1, $2, $3, $4, $5, 'CUSTOMER', $6, $7, TRUE, CURRENT_TIMESTAMP, TRUE)
-       RETURNING id, first_name AS "firstName", last_name AS "lastName", email, phone, default_address AS "defaultAddress", role_id AS "roleId", role_id AS role, accepted_terms AS "acceptedTerms"`,
-      [userId, resolvedFirstName, lastName ? lastName.trim() : null, cleanEmail, passwordHash, cleanPhone, cleanAddress || null]
-    );
+    let result;
+    try {
+      result = await query(
+        `INSERT INTO users (id, first_name, last_name, email, password_hash, role_id, phone, default_address, accepted_terms, terms_accepted_at, is_active)
+         VALUES ($1, $2, $3, $4, $5, 'CUSTOMER', $6, $7, TRUE, CURRENT_TIMESTAMP, TRUE)
+         RETURNING id, first_name AS "firstName", last_name AS "lastName", email, phone, default_address AS "defaultAddress", role_id AS "roleId", role_id AS role, accepted_terms AS "acceptedTerms"`,
+        [userId, resolvedFirstName, lastName ? lastName.trim() : null, cleanEmail, passwordHash, cleanPhone, cleanAddress || null]
+      );
+    } catch (insertErr: any) {
+      if (insertErr.code === '42703') {
+        // Column missing in remote DB, patch and retry
+        console.warn('⚠️ Columna faltante detectada al registrar. Aplicando parche estructural...');
+        await patchMissingUserColumns();
+        result = await query(
+          `INSERT INTO users (id, first_name, last_name, email, password_hash, role_id, phone, default_address, accepted_terms, terms_accepted_at, is_active)
+           VALUES ($1, $2, $3, $4, $5, 'CUSTOMER', $6, $7, TRUE, CURRENT_TIMESTAMP, TRUE)
+           RETURNING id, first_name AS "firstName", last_name AS "lastName", email, phone, default_address AS "defaultAddress", role_id AS "roleId", role_id AS role, accepted_terms AS "acceptedTerms"`,
+          [userId, resolvedFirstName, lastName ? lastName.trim() : null, cleanEmail, passwordHash, cleanPhone, cleanAddress || null]
+        );
+      } else {
+        throw insertErr;
+      }
+    }
 
     const customerRow = result.rows[0];
     const customerPayload = {
@@ -110,8 +157,8 @@ router.post('/register-customer', async (req: Request, res: Response) => {
       firstName: customerRow.firstName,
       lastName: customerRow.lastName,
       email: customerRow.email,
-      phone: customerRow.phone,
-      defaultAddress: customerRow.defaultAddress,
+      phone: customerRow.phone || cleanPhone,
+      defaultAddress: customerRow.defaultAddress || cleanAddress,
       role: 'CUSTOMER' as const,
       roleId: 'CUSTOMER' as const,
       branchId: null,
@@ -134,7 +181,7 @@ router.post('/register-customer', async (req: Request, res: Response) => {
   }
 });
 
-// POST /api/auth/login — User login with bcrypt password verification & JWT generation (Admin, Worker, Customer)
+// POST /api/auth/login — User login with bcrypt password verification, rate limiting & 15m lockout (Admin, Worker, Customer)
 router.post('/login', async (req: Request, res: Response) => {
   const { email, password } = req.body;
 
@@ -143,10 +190,33 @@ router.post('/login', async (req: Request, res: Response) => {
   }
 
   const cleanEmail = email.toLowerCase().trim();
+  const clientIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip || 'unknown_ip';
+  const emailKey = normalizeIdentifier('login', cleanEmail);
+  const ipKey = normalizeIdentifier('login_ip', clientIp);
+
+  // 1. Check Security Lockouts (Max 5 attempts allowed, 15 minutes lockout)
+  const emailLock = await checkSecurityLockout(emailKey);
+  if (emailLock.isBlocked) {
+    return res.status(429).json({
+      error: emailLock.message,
+      blocked: true,
+      remainingMinutes: emailLock.remainingMinutes,
+    });
+  }
+  const ipLock = await checkSecurityLockout(ipKey);
+  if (ipLock.isBlocked) {
+    return res.status(429).json({
+      error: ipLock.message,
+      blocked: true,
+      remainingMinutes: ipLock.remainingMinutes,
+    });
+  }
 
   if (!isDatabaseConfigured()) {
     // Development fallback
     if (cleanEmail === 'admin@maracumango.com' && password === 'admin123') {
+      await resetSecurityAttempts(emailKey);
+      await resetSecurityAttempts(ipKey);
       const user = {
         id: 'user-admin-1',
         name: 'Administrador Maracumango',
@@ -162,6 +232,8 @@ router.post('/login', async (req: Request, res: Response) => {
       return res.json({ token, user });
     }
     if (cleanEmail === 'carlos@maracumango.com' && password === 'worker123') {
+      await resetSecurityAttempts(emailKey);
+      await resetSecurityAttempts(ipKey);
       const user = {
         id: 'user-worker-1',
         name: 'Carlos Gómez',
@@ -183,6 +255,8 @@ router.post('/login', async (req: Request, res: Response) => {
     if (devCust) {
       const isValid = await bcrypt.compare(password, devCust.passwordHash);
       if (isValid) {
+        await resetSecurityAttempts(emailKey);
+        await resetSecurityAttempts(ipKey);
         const tokenPayload = {
           id: devCust.id,
           name: devCust.name,
@@ -200,22 +274,61 @@ router.post('/login', async (req: Request, res: Response) => {
       }
     }
 
-    return res.status(401).json({ error: 'Credenciales inválidas.' });
+    // Failed credentials in fallback
+    const failEmail = await recordFailedAttempt(emailKey);
+    await recordFailedAttempt(ipKey);
+    return res.status(failEmail.isBlocked ? 429 : 401).json({
+      error: failEmail.message,
+      blocked: failEmail.isBlocked,
+      attemptsLeft: failEmail.attemptsLeft,
+      remainingMinutes: failEmail.remainingMinutes,
+    });
   }
 
   try {
-    const userRes = await query(
-      `SELECT u.id, u.first_name, u.last_name, u.email, u.password_hash, u.role_id, u.branch_id, u.is_active,
-              u.phone, u.default_address, u.accepted_terms,
-              b.name AS branch_name
-       FROM users u
-       LEFT JOIN branches b ON b.id = u.branch_id
-       WHERE LOWER(u.email) = $1`,
-      [cleanEmail]
-    );
+    let userRes;
+    try {
+      userRes = await query(
+        `SELECT u.id, u.first_name, u.last_name, u.email, u.password_hash, u.role_id, u.branch_id, u.is_active,
+                COALESCE(u.phone, '') AS phone,
+                COALESCE(u.default_address, '') AS default_address,
+                COALESCE(u.accepted_terms, TRUE) AS accepted_terms,
+                b.name AS branch_name
+         FROM users u
+         LEFT JOIN branches b ON b.id = u.branch_id
+         WHERE LOWER(u.email) = $1`,
+        [cleanEmail]
+      );
+    } catch (queryErr: any) {
+      if (queryErr.code === '42703') {
+        // Missing column in database, patch and retry
+        console.warn('⚠️ Columna u.phone o u.default_address faltante. Parcheando esquema y reintentando login...');
+        await patchMissingUserColumns();
+        userRes = await query(
+          `SELECT u.id, u.first_name, u.last_name, u.email, u.password_hash, u.role_id, u.branch_id, u.is_active,
+                  COALESCE(u.phone, '') AS phone,
+                  COALESCE(u.default_address, '') AS default_address,
+                  COALESCE(u.accepted_terms, TRUE) AS accepted_terms,
+                  b.name AS branch_name
+           FROM users u
+           LEFT JOIN branches b ON b.id = u.branch_id
+           WHERE LOWER(u.email) = $1`,
+          [cleanEmail]
+        );
+      } else {
+        throw queryErr;
+      }
+    }
 
     if (userRes.rows.length === 0) {
-      return res.status(401).json({ error: 'Credenciales incorrectas o usuario no registrado.' });
+      const fail = await recordFailedAttempt(emailKey);
+      await recordFailedAttempt(ipKey);
+      return res.status(fail.isBlocked ? 429 : 401).json({
+        error: fail.message,
+        blocked: fail.isBlocked,
+        attemptsLeft: fail.attemptsLeft,
+        remainingMinutes: fail.remainingMinutes,
+      });
     }
 
     const userRow = userRes.rows[0];
@@ -227,8 +340,19 @@ router.post('/login', async (req: Request, res: Response) => {
     // Verify bcrypt hash
     const isValid = await bcrypt.compare(password, userRow.password_hash);
     if (!isValid) {
-      return res.status(401).json({ error: 'Credenciales incorrectas.' });
+      const fail = await recordFailedAttempt(emailKey);
+      await recordFailedAttempt(ipKey);
+      return res.status(fail.isBlocked ? 429 : 401).json({
+        error: fail.message,
+        blocked: fail.isBlocked,
+        attemptsLeft: fail.attemptsLeft,
+        remainingMinutes: fail.remainingMinutes,
+      });
     }
+
+    // Successful login: clear attempt locks
+    await resetSecurityAttempts(emailKey);
+    await resetSecurityAttempts(ipKey);
 
     const userPayload = {
       id: userRow.id,
@@ -236,8 +360,8 @@ router.post('/login', async (req: Request, res: Response) => {
       firstName: userRow.first_name,
       lastName: userRow.last_name,
       email: userRow.email,
-      phone: userRow.phone,
-      defaultAddress: userRow.default_address,
+      phone: userRow.phone || '',
+      defaultAddress: userRow.default_address || '',
       role: userRow.role_id as 'ADMIN' | 'WORKER' | 'CUSTOMER',
       roleId: userRow.role_id as 'ADMIN' | 'WORKER' | 'CUSTOMER',
       branchId: userRow.branch_id,
@@ -254,6 +378,198 @@ router.post('/login', async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Error during login:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/auth/forgot-password — Request 6-digit password recovery code with 15m lockout protection
+router.post('/forgot-password', async (req: Request, res: Response) => {
+  const { email } = req.body;
+  if (!email || !VALID_EMAIL_REGEX.test(email)) {
+    return res.status(400).json({ error: 'Por favor ingresa un correo electrónico válido.' });
+  }
+
+  const cleanEmail = email.toLowerCase().trim();
+  const clientIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip || 'unknown_ip';
+  const emailKey = normalizeIdentifier('reset', cleanEmail);
+  const ipKey = normalizeIdentifier('reset_ip', clientIp);
+
+  // Check rate limits & 15m lockouts
+  const emailLock = await checkSecurityLockout(emailKey);
+  if (emailLock.isBlocked) {
+    return res.status(429).json({
+      error: emailLock.message,
+      blocked: true,
+      remainingMinutes: emailLock.remainingMinutes,
+    });
+  }
+  const ipLock = await checkSecurityLockout(ipKey);
+  if (ipLock.isBlocked) {
+    return res.status(429).json({
+      error: ipLock.message,
+      blocked: true,
+      remainingMinutes: ipLock.remainingMinutes,
+    });
+  }
+
+  // Generate 6-digit verification code
+  const code = Math.floor(100000 + Math.random() * 900000).toString();
+  const expiresAt = Date.now() + 15 * 60 * 1000; // 15 minutes
+  const tokenId = `rst-${Date.now()}`;
+
+  if (!isDatabaseConfigured()) {
+    devFallbackResetTokens.push({
+      id: tokenId,
+      email: cleanEmail,
+      code,
+      expiresAt,
+      used: false,
+    });
+    return res.json({
+      message: 'Código de recuperación de 6 dígitos generado exitosamente. Válido por 15 minutos.',
+      code,
+      email: cleanEmail,
+      expiresInMinutes: 15,
+    });
+  }
+
+  try {
+    // Check if user exists
+    const userCheck = await query('SELECT id, first_name FROM users WHERE LOWER(email) = $1', [cleanEmail]);
+    if (userCheck.rows.length === 0) {
+      // Record failed attempt on unknown email to prevent spamming
+      await recordFailedAttempt(emailKey);
+      await recordFailedAttempt(ipKey);
+      return res.status(404).json({
+        error: 'No se encontró ninguna cuenta registrada con este correo electrónico.',
+      });
+    }
+
+    const user = userCheck.rows[0];
+
+    // Invalidate prior unused codes for this email
+    await query('UPDATE password_reset_tokens SET used = TRUE WHERE LOWER(email) = $1', [cleanEmail]);
+
+    // Insert new token
+    await query(
+      `INSERT INTO password_reset_tokens (id, user_id, email, code, expires_at, used)
+       VALUES ($1, $2, $3, $4, $5, FALSE)`,
+      [tokenId, user.id, cleanEmail, code, new Date(expiresAt).toISOString()]
+    );
+
+    res.json({
+      message: 'Código de recuperación de 6 dígitos generado exitosamente. Válido por 15 minutos.',
+      code, // Returned for instant user feedback and demo/recovery in UI
+      email: cleanEmail,
+      expiresInMinutes: 15,
+    });
+  } catch (error: any) {
+    console.error('Error generating reset code:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/auth/reset-password — Verify code and update password with 5-attempt limit & 15m lockout
+router.post('/reset-password', async (req: Request, res: Response) => {
+  const { email, code, newPassword } = req.body;
+
+  if (!email || !code || !newPassword) {
+    return res.status(400).json({ error: 'Correo, código de 6 dígitos y nueva contraseña son obligatorios.' });
+  }
+
+  const cleanEmail = email.toLowerCase().trim();
+  const cleanCode = String(code).trim();
+  const clientIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip || 'unknown_ip';
+  const emailKey = normalizeIdentifier('reset', cleanEmail);
+  const ipKey = normalizeIdentifier('reset_ip', clientIp);
+
+  // Check rate limits & 15m lockouts
+  const emailLock = await checkSecurityLockout(emailKey);
+  if (emailLock.isBlocked) {
+    return res.status(429).json({
+      error: emailLock.message,
+      blocked: true,
+      remainingMinutes: emailLock.remainingMinutes,
+    });
+  }
+  const ipLock = await checkSecurityLockout(ipKey);
+  if (ipLock.isBlocked) {
+    return res.status(429).json({
+      error: ipLock.message,
+      blocked: true,
+      remainingMinutes: ipLock.remainingMinutes,
+    });
+  }
+
+  if (newPassword.length < 6) {
+    return res.status(400).json({ error: 'La nueva contraseña debe tener al menos 6 caracteres.' });
+  }
+
+  if (!isDatabaseConfigured()) {
+    const validToken = devFallbackResetTokens.find(
+      (t) => t.email === cleanEmail && t.code === cleanCode && !t.used && t.expiresAt > Date.now()
+    );
+
+    if (!validToken) {
+      const fail = await recordFailedAttempt(emailKey);
+      await recordFailedAttempt(ipKey);
+      return res.status(fail.isBlocked ? 429 : 400).json({
+        error: `Código de recuperación incorrecto o vencido. ${fail.message}`,
+        blocked: fail.isBlocked,
+        attemptsLeft: fail.attemptsLeft,
+      });
+    }
+
+    validToken.used = true;
+    const newHash = await bcrypt.hash(newPassword, 10);
+    const devCust = devFallbackCustomers.find((c) => c.email === cleanEmail);
+    if (devCust) {
+      devCust.passwordHash = newHash;
+    }
+
+    await resetSecurityAttempts(emailKey);
+    await resetSecurityAttempts(ipKey);
+    return res.json({ message: 'Contraseña restablecida exitosamente. Ya puedes iniciar sesión con tu nueva contraseña.' });
+  }
+
+  try {
+    const tokenRes = await query(
+      `SELECT id, user_id FROM password_reset_tokens
+       WHERE LOWER(email) = $1 AND code = $2 AND used = FALSE AND expires_at > CURRENT_TIMESTAMP
+       ORDER BY created_at DESC LIMIT 1`,
+      [cleanEmail, cleanCode]
+    );
+
+    if (tokenRes.rows.length === 0) {
+      const fail = await recordFailedAttempt(emailKey);
+      await recordFailedAttempt(ipKey);
+      return res.status(fail.isBlocked ? 429 : 400).json({
+        error: `Código de verificación incorrecto o expirado. ${fail.message}`,
+        blocked: fail.isBlocked,
+        attemptsLeft: fail.attemptsLeft,
+        remainingMinutes: fail.remainingMinutes,
+      });
+    }
+
+    const tokenRow = tokenRes.rows[0];
+    const newHash = await bcrypt.hash(newPassword, 10);
+
+    // Update user password and mark code as used
+    await query(
+      `UPDATE users SET password_hash = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
+      [newHash, tokenRow.user_id]
+    );
+    await query(`UPDATE password_reset_tokens SET used = TRUE WHERE id = $1`, [tokenRow.id]);
+
+    // Reset lockout counters on success
+    await resetSecurityAttempts(emailKey);
+    await resetSecurityAttempts(ipKey);
+
+    res.json({
+      message: '¡Contraseña restablecida con éxito! Ya puedes iniciar sesión en Maracumango con tu nueva contraseña.',
+    });
+  } catch (error: any) {
+    console.error('Error resetting password:', error.message);
     res.status(500).json({ error: error.message });
   }
 });

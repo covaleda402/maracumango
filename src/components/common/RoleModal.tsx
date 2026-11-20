@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
+import { apiService } from '../../services/apiService';
 
 export const RoleModal: React.FC = () => {
   const {
@@ -15,8 +16,8 @@ export const RoleModal: React.FC = () => {
     setActiveTab,
   } = useApp();
 
-  // Tab: 'login' | 'register' | 'profile'
-  const [modalTab, setModalTab] = useState<'login' | 'register'>('login');
+  // Tab: 'login' | 'register' | 'forgot'
+  const [modalTab, setModalTab] = useState<'login' | 'register' | 'forgot'>('login');
 
   // Form states
   const [loginEmail, setLoginEmail] = useState('');
@@ -30,6 +31,15 @@ export const RoleModal: React.FC = () => {
   const [regAddress, setRegAddress] = useState('');
   const [regPassword, setRegPassword] = useState('');
   const [acceptedTerms, setAcceptedTerms] = useState(true);
+
+  // Password reset states
+  const [resetEmail, setResetEmail] = useState('');
+  const [resetCode, setResetCode] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [resetStep, setResetStep] = useState<1 | 2>(1);
+  const [resetSuccessMessage, setResetSuccessMessage] = useState<string | null>(null);
+  const [generatedCodeHint, setGeneratedCodeHint] = useState<string | null>(null);
 
   // Profile edit states (for logged in customers)
   const [editPhone, setEditPhone] = useState('');
@@ -128,6 +138,79 @@ export const RoleModal: React.FC = () => {
       }
     } catch {
       setErrorMessage('Error al conectar con el servidor.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleRequestResetCode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMessage(null);
+    setGeneratedCodeHint(null);
+
+    const cleanEmail = resetEmail.trim().toLowerCase();
+    if (!cleanEmail) {
+      setErrorMessage('Ingresa el correo electrónico asociado a tu cuenta.');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const res = await apiService.forgotPassword(cleanEmail);
+      if (res.success) {
+        setResetStep(2);
+        if (res.code) {
+          setResetCode(res.code);
+          setGeneratedCodeHint(`Código generado: ${res.code} (Autocompletado para verificación rápida)`);
+        }
+      } else {
+        setErrorMessage(res.error || 'No se pudo generar el código de recuperación.');
+      }
+    } catch {
+      setErrorMessage('Error de conexión al solicitar código.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handlePerformPasswordReset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMessage(null);
+
+    const cleanEmail = resetEmail.trim().toLowerCase();
+    const cleanCode = resetCode.trim();
+
+    if (!cleanCode || cleanCode.length < 6) {
+      setErrorMessage('Ingresa el código numérico de 6 dígitos.');
+      return;
+    }
+    if (!newPassword || newPassword.length < 6) {
+      setErrorMessage('La nueva contraseña debe tener al menos 6 caracteres.');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setErrorMessage('Las contraseñas ingresadas no coinciden.');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const res = await apiService.resetPassword({
+        email: cleanEmail,
+        code: cleanCode,
+        newPassword,
+      });
+
+      if (res.success) {
+        setResetSuccessMessage('¡Contraseña restablecida exitosamente! Ya puedes iniciar sesión.');
+        setResetStep(1);
+        setLoginEmail(cleanEmail);
+        setLoginPassword('');
+      } else {
+        setErrorMessage(res.error || 'Error al restablecer contraseña.');
+      }
+    } catch {
+      setErrorMessage('Error de conexión al restablecer contraseña.');
     } finally {
       setIsLoading(false);
     }
@@ -363,47 +446,87 @@ export const RoleModal: React.FC = () => {
         ) : (
           /* SI EL USUARIO NO ESTÁ LOGUEADO: TABS DE LOGIN Y REGISTRO */
           <div className="space-y-4">
-            {/* Selector de Pestañas */}
-            <div className="flex rounded-2xl bg-surface-container p-1 border border-outline-variant/20">
-              <button
-                type="button"
-                onClick={() => {
-                  setModalTab('login');
-                  setErrorMessage(null);
-                }}
-                className={`flex-1 py-2 text-xs font-bold rounded-xl transition-all ${
-                  modalTab === 'login'
-                    ? 'bg-surface-container-lowest text-on-surface shadow-sm'
-                    : 'text-on-surface-variant hover:text-on-surface'
-                }`}
-              >
-                Iniciar Sesión
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setModalTab('register');
-                  setErrorMessage(null);
-                }}
-                className={`flex-1 py-2 text-xs font-bold rounded-xl transition-all ${
-                  modalTab === 'register'
-                    ? 'bg-primary-container text-on-primary shadow-sm'
-                    : 'text-on-surface-variant hover:text-on-surface'
-                }`}
-              >
-                Crear Cuenta (Cliente)
-              </button>
-            </div>
+            {/* Selector de Pestañas o Encabezado de Recuperación */}
+            {modalTab === 'forgot' ? (
+              <div className="flex items-center justify-between pb-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setModalTab('login');
+                    setErrorMessage(null);
+                    setResetSuccessMessage(null);
+                  }}
+                  className="flex items-center gap-1 text-xs text-primary font-bold hover:underline"
+                >
+                  <span className="material-symbols-outlined text-[16px]">arrow_back</span>
+                  Volver al inicio de sesión
+                </button>
+                <span className="text-[11px] font-semibold text-secondary flex items-center gap-1">
+                  <span className="material-symbols-outlined text-[14px]">shield</span>
+                  Protección 15 min
+                </span>
+              </div>
+            ) : (
+              <div className="flex rounded-2xl bg-surface-container p-1 border border-outline-variant/20">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setModalTab('login');
+                    setErrorMessage(null);
+                  }}
+                  className={`flex-1 py-2 text-xs font-bold rounded-xl transition-all ${
+                    modalTab === 'login'
+                      ? 'bg-surface-container-lowest text-on-surface shadow-sm'
+                      : 'text-on-surface-variant hover:text-on-surface'
+                  }`}
+                >
+                  Iniciar Sesión
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setModalTab('register');
+                    setErrorMessage(null);
+                  }}
+                  className={`flex-1 py-2 text-xs font-bold rounded-xl transition-all ${
+                    modalTab === 'register'
+                      ? 'bg-primary-container text-on-primary shadow-sm'
+                      : 'text-on-surface-variant hover:text-on-surface'
+                  }`}
+                >
+                  Crear Cuenta (Cliente)
+                </button>
+              </div>
+            )}
 
-            {/* Mensaje de Incentivo / Beneficio */}
-            <div className="p-3 rounded-2xl bg-secondary-container/25 border border-secondary-container/40 flex items-start gap-2.5">
-              <span className="material-symbols-outlined text-secondary text-[20px] shrink-0 mt-0.5">
-                verified
-              </span>
-              <p className="text-[11px] text-on-surface leading-snug">
-                <strong>¿Por qué registrarte?</strong> Para pedir en 1 solo clic sin llenar formularios cada vez y tener tus datos protegidos.
-              </p>
-            </div>
+            {/* Mensaje de Incentivo o Información de Seguridad */}
+            {modalTab === 'forgot' ? (
+              <div className="p-3 rounded-2xl bg-secondary-container/20 border border-secondary-container/30 flex items-start gap-2.5">
+                <span className="material-symbols-outlined text-secondary text-[20px] shrink-0 mt-0.5">
+                  lock_reset
+                </span>
+                <p className="text-[11px] text-on-surface leading-snug">
+                  <strong>Recuperación Segura:</strong> Se permite un máximo de 5 intentos. Si se supera el límite de intentos fallidos, el acceso se bloqueará durante 15 minutos por seguridad.
+                </p>
+              </div>
+            ) : (
+              <div className="p-3 rounded-2xl bg-secondary-container/25 border border-secondary-container/40 flex items-start gap-2.5">
+                <span className="material-symbols-outlined text-secondary text-[20px] shrink-0 mt-0.5">
+                  verified
+                </span>
+                <p className="text-[11px] text-on-surface leading-snug">
+                  <strong>¿Por qué registrarte?</strong> Para pedir en 1 solo clic sin llenar formularios cada vez y tener tus datos protegidos.
+                </p>
+              </div>
+            )}
+
+            {/* Mensaje de Éxito de Restablecimiento */}
+            {resetSuccessMessage && (
+              <div className="p-3 rounded-xl bg-primary/15 border border-primary/30 text-xs text-primary font-bold flex items-center gap-2">
+                <span className="material-symbols-outlined text-[18px]">check_circle</span>
+                <span>{resetSuccessMessage}</span>
+              </div>
+            )}
 
             {/* Mensaje de Error */}
             {errorMessage && (
@@ -450,6 +573,21 @@ export const RoleModal: React.FC = () => {
                       <span className="material-symbols-outlined text-[18px]">
                         {showPassword ? 'visibility_off' : 'visibility'}
                       </span>
+                    </button>
+                  </div>
+                  <div className="flex justify-end pt-1.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setModalTab('forgot');
+                        setErrorMessage(null);
+                        setResetSuccessMessage(null);
+                        setResetStep(1);
+                        setResetEmail(loginEmail);
+                      }}
+                      className="text-[11px] text-primary hover:underline font-semibold"
+                    >
+                      ¿Olvidaste tu contraseña?
                     </button>
                   </div>
                 </div>
@@ -625,6 +763,134 @@ export const RoleModal: React.FC = () => {
                   </button>
                 </p>
               </form>
+            )}
+
+            {/* FORMULARIO 3: RECUPERACIÓN DE CONTRASEÑA */}
+            {modalTab === 'forgot' && (
+              <div className="space-y-3.5">
+                {resetStep === 1 ? (
+                  <form onSubmit={handleRequestResetCode} className="space-y-3.5">
+                    <div>
+                      <label className="block text-xs font-medium text-on-surface mb-1">
+                        Correo Electrónico de tu Cuenta
+                      </label>
+                      <input
+                        type="email"
+                        value={resetEmail}
+                        onChange={(e) => setResetEmail(e.target.value)}
+                        placeholder="tu_correo@ejemplo.com"
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-outline-variant/30 bg-surface-container-lowest text-xs text-on-surface focus:outline-none focus:ring-2 focus:ring-primary"
+                        required
+                      />
+                      <p className="text-[10px] text-on-surface-variant mt-1">
+                        Ingresa el correo con el que te registraste (Cliente, Trabajador o Administrador).
+                      </p>
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={isLoading}
+                      className="w-full py-3 rounded-2xl bg-primary-container text-on-primary font-bold text-xs shadow-md hover:bg-primary transition-all flex items-center justify-center gap-2"
+                    >
+                      {isLoading ? (
+                        <span>Generando código...</span>
+                      ) : (
+                        <>
+                          <span className="material-symbols-outlined text-[18px]">send</span>
+                          <span>Obtener Código de Recuperación</span>
+                        </>
+                      )}
+                    </button>
+                  </form>
+                ) : (
+                  <form onSubmit={handlePerformPasswordReset} className="space-y-3">
+                    {generatedCodeHint && (
+                      <div className="p-2.5 rounded-xl bg-tertiary-container/30 border border-tertiary-container/50 text-[11px] text-on-tertiary-container font-semibold flex items-center gap-2">
+                        <span className="material-symbols-outlined text-[16px]">key</span>
+                        <span>{generatedCodeHint}</span>
+                      </div>
+                    )}
+
+                    <div>
+                      <label className="block text-xs font-medium text-on-surface mb-1">
+                        Código de 6 Dígitos
+                      </label>
+                      <input
+                        type="text"
+                        maxLength={6}
+                        value={resetCode}
+                        onChange={(e) => setResetCode(e.target.value.replace(/\D/g, ''))}
+                        placeholder="123456"
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-outline-variant/30 bg-surface-container-lowest text-center tracking-widest text-sm font-bold text-on-surface focus:outline-none focus:ring-2 focus:ring-primary"
+                        required
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium text-on-surface mb-1">
+                        Nueva Contraseña (Mínimo 6 caracteres)
+                      </label>
+                      <input
+                        type={showPassword ? 'text' : 'password'}
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        placeholder="Nueva contraseña segura"
+                        className="w-full px-3.5 py-2 rounded-xl border border-outline-variant/30 bg-surface-container-lowest text-xs text-on-surface focus:outline-none focus:ring-2 focus:ring-primary"
+                        required
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium text-on-surface mb-1">
+                        Confirmar Nueva Contraseña
+                      </label>
+                      <input
+                        type={showPassword ? 'text' : 'password'}
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        placeholder="Repite la nueva contraseña"
+                        className="w-full px-3.5 py-2 rounded-xl border border-outline-variant/30 bg-surface-container-lowest text-xs text-on-surface focus:outline-none focus:ring-2 focus:ring-primary"
+                        required
+                      />
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={isLoading}
+                      className="w-full py-3 rounded-2xl bg-primary text-on-primary font-bold text-xs shadow-md hover:opacity-95 transition-all flex items-center justify-center gap-2"
+                    >
+                      {isLoading ? (
+                        <span>Guardando nueva contraseña...</span>
+                      ) : (
+                        <>
+                          <span className="material-symbols-outlined text-[18px]">lock_reset</span>
+                          <span>Restablecer mi Contraseña</span>
+                        </>
+                      )}
+                    </button>
+
+                    <div className="flex justify-between items-center pt-1 text-[11px]">
+                      <button
+                        type="button"
+                        onClick={() => setResetStep(1)}
+                        className="text-on-surface-variant hover:text-on-surface underline"
+                      >
+                        Reenviar código
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setModalTab('login');
+                          setErrorMessage(null);
+                        }}
+                        className="text-primary font-bold hover:underline"
+                      >
+                        Ir a Iniciar Sesión
+                      </button>
+                    </div>
+                  </form>
+                )}
+              </div>
             )}
 
             {/* Enlace sutil para personal del equipo */}
