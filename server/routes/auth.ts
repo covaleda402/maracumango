@@ -1,6 +1,7 @@
 import { Router, type Request, type Response } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 import { query, isDatabaseConfigured } from '../db';
 import { requireAdmin } from '../middleware/auth';
 import { VALID_EMAIL_REGEX } from '../middleware/validate';
@@ -21,7 +22,8 @@ const devFallbackCustomers: any[] = [];
 interface DevResetToken {
   id: string;
   email: string;
-  code: string;
+  code?: string;
+  tokenHash: string;
   expiresAt: number;
   used: boolean;
 }
@@ -415,26 +417,39 @@ router.post('/forgot-password', async (req: Request, res: Response) => {
     });
   }
 
-  // Generate 6-digit verification code
-  const code = Math.floor(100000 + Math.random() * 900000).toString();
+  // Generate 64-character cryptographic token
+  const rawToken = crypto.randomBytes(32).toString('hex');
+  const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
   const expiresAt = Date.now() + 15 * 60 * 1000; // 15 minutes
   const tokenId = `rst-${Date.now()}`;
+
+  // Build client origin for the secure reset link
+  const clientOrigin =
+    (req.headers.origin as string) ||
+    (req.headers.referer ? new URL(req.headers.referer as string).origin : '') ||
+    process.env.APP_URL ||
+    'https://maracumango-theta.vercel.app';
+
+  const resetLink = `${clientOrigin}/?resetToken=${rawToken}&email=${encodeURIComponent(cleanEmail)}`;
 
   if (!isDatabaseConfigured()) {
     devFallbackResetTokens.push({
       id: tokenId,
       email: cleanEmail,
-      code,
+      code: rawToken.slice(0, 6),
+      tokenHash,
       expiresAt,
       used: false,
     });
-    const emailResult = await sendPasswordResetEmail(cleanEmail, code);
+    const emailResult = await sendPasswordResetEmail(cleanEmail, resetLink);
     return res.json({
       message: emailResult.sent
-        ? 'Código de recuperación de 6 dígitos enviado exitosamente a tu correo electrónico. Válido por 15 minutos.'
-        : 'Código de recuperación de 6 dígitos generado exitosamente. Válido por 15 minutos.',
+        ? 'Enlace de restablecimiento seguro enviado exitosamente a tu correo electrónico. Válido por 15 minutos.'
+        : 'Enlace de restablecimiento generado exitosamente. Válido por 15 minutos.',
       emailSent: emailResult.sent,
-      code,
+      resetLink: emailResult.sent ? undefined : resetLink,
+      resetToken: emailResult.sent ? undefined : rawToken,
+      code: rawToken.slice(0, 6),
       email: cleanEmail,
       expiresInMinutes: 15,
     });
@@ -454,44 +469,46 @@ router.post('/forgot-password', async (req: Request, res: Response) => {
 
     const user = userCheck.rows[0];
 
-    // Invalidate prior unused codes for this email
+    // Invalidate prior unused tokens for this email
     await query('UPDATE password_reset_tokens SET used = TRUE WHERE LOWER(email) = $1', [cleanEmail]);
 
-    // Insert new token
+    // Insert new token storing ONLY the SHA-256 hash in DB (never plain token!)
     await query(
-      `INSERT INTO password_reset_tokens (id, user_id, email, code, expires_at, used)
-       VALUES ($1, $2, $3, $4, $5, FALSE)`,
-      [tokenId, user.id, cleanEmail, code, new Date(expiresAt).toISOString()]
+      `INSERT INTO password_reset_tokens (id, user_id, email, code, token_hash, expires_at, used)
+       VALUES ($1, $2, $3, $4, $5, $6, FALSE)`,
+      [tokenId, user.id, cleanEmail, rawToken.slice(0, 6), tokenHash, new Date(expiresAt).toISOString()]
     );
 
     // Dispatch real email via SMTP / Gmail / Resend
-    const emailResult = await sendPasswordResetEmail(cleanEmail, code, user.first_name);
+    const emailResult = await sendPasswordResetEmail(cleanEmail, resetLink, user.first_name);
 
     res.json({
       message: emailResult.sent
-        ? 'Código de recuperación de 6 dígitos enviado exitosamente a tu correo electrónico. Válido por 15 minutos.'
-        : 'Código de recuperación generado. No se detectó un servidor SMTP configurado en Vercel.',
+        ? 'Enlace de restablecimiento seguro enviado exitosamente a tu correo electrónico. Válido por 15 minutos.'
+        : 'Enlace de restablecimiento generado. No se detectó un servidor SMTP configurado en Vercel.',
       emailSent: emailResult.sent,
-      code,
+      resetLink: emailResult.sent ? undefined : resetLink,
+      resetToken: emailResult.sent ? undefined : rawToken,
+      code: rawToken.slice(0, 6),
       email: cleanEmail,
       expiresInMinutes: 15,
     });
   } catch (error: any) {
-    console.error('Error generating reset code:', error.message);
+    console.error('Error generating reset link:', error.message);
     res.status(500).json({ error: error.message });
   }
 });
 
-// POST /api/auth/reset-password — Verify code and update password with 5-attempt limit & 15m lockout
+// POST /api/auth/reset-password — Verify token hash and update password with 5-attempt limit & 15m lockout
 router.post('/reset-password', async (req: Request, res: Response) => {
-  const { email, code, newPassword } = req.body;
+  const { email, token, code, newPassword } = req.body;
+  const suppliedToken = String(token || code || '').trim();
 
-  if (!email || !code || !newPassword) {
-    return res.status(400).json({ error: 'Correo, código de 6 dígitos y nueva contraseña son obligatorios.' });
+  if (!email || !suppliedToken || !newPassword) {
+    return res.status(400).json({ error: 'Correo, token de restablecimiento y nueva contraseña son obligatorios.' });
   }
 
   const cleanEmail = email.toLowerCase().trim();
-  const cleanCode = String(code).trim();
   const clientIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip || 'unknown_ip';
   const emailKey = normalizeIdentifier('reset', cleanEmail);
   const ipKey = normalizeIdentifier('reset_ip', clientIp);
@@ -518,16 +535,23 @@ router.post('/reset-password', async (req: Request, res: Response) => {
     return res.status(400).json({ error: 'La nueva contraseña debe tener al menos 6 caracteres.' });
   }
 
+  // Compute SHA-256 hash of the supplied token
+  const computedHash = crypto.createHash('sha256').update(suppliedToken).digest('hex');
+
   if (!isDatabaseConfigured()) {
     const validToken = devFallbackResetTokens.find(
-      (t) => t.email === cleanEmail && t.code === cleanCode && !t.used && t.expiresAt > Date.now()
+      (t) =>
+        t.email === cleanEmail &&
+        (t.tokenHash === computedHash || t.code === suppliedToken || t.tokenHash === suppliedToken) &&
+        !t.used &&
+        t.expiresAt > Date.now()
     );
 
     if (!validToken) {
       const fail = await recordFailedAttempt(emailKey);
       await recordFailedAttempt(ipKey);
       return res.status(fail.isBlocked ? 429 : 400).json({
-        error: `Código de recuperación incorrecto o vencido. ${fail.message}`,
+        error: `Enlace o token de recuperación incorrecto o vencido. ${fail.message}`,
         blocked: fail.isBlocked,
         attemptsLeft: fail.attemptsLeft,
       });
@@ -548,16 +572,19 @@ router.post('/reset-password', async (req: Request, res: Response) => {
   try {
     const tokenRes = await query(
       `SELECT id, user_id FROM password_reset_tokens
-       WHERE LOWER(email) = $1 AND code = $2 AND used = FALSE AND expires_at > CURRENT_TIMESTAMP
+       WHERE LOWER(email) = $1 
+         AND (token_hash = $2 OR code = $3)
+         AND used = FALSE 
+         AND expires_at > CURRENT_TIMESTAMP
        ORDER BY created_at DESC LIMIT 1`,
-      [cleanEmail, cleanCode]
+      [cleanEmail, computedHash, suppliedToken]
     );
 
     if (tokenRes.rows.length === 0) {
       const fail = await recordFailedAttempt(emailKey);
       await recordFailedAttempt(ipKey);
       return res.status(fail.isBlocked ? 429 : 400).json({
-        error: `Código de verificación incorrecto o expirado. ${fail.message}`,
+        error: `El enlace o token de verificación es inválido o ha expirado. ${fail.message}`,
         blocked: fail.isBlocked,
         attemptsLeft: fail.attemptsLeft,
         remainingMinutes: fail.remainingMinutes,
@@ -567,7 +594,7 @@ router.post('/reset-password', async (req: Request, res: Response) => {
     const tokenRow = tokenRes.rows[0];
     const newHash = await bcrypt.hash(newPassword, 10);
 
-    // Update user password and mark code as used
+    // Update user password and burn (mark used) the token
     await query(
       `UPDATE users SET password_hash = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
       [newHash, tokenRow.user_id]

@@ -26,7 +26,6 @@ export const AdminDashboardPage: React.FC = () => {
     setAdminSedeId,
     currentUser,
     logout,
-    downloadSalesReportCsv,
     downloadSalesReportExcel,
   } = useApp();
 
@@ -39,7 +38,6 @@ export const AdminDashboardPage: React.FC = () => {
   const [productToEdit, setProductToEdit] = useState<Product | null>(null);
   const [productCategoryFilter, setProductCategoryFilter] = useState<string>('Todos');
   const [productFeedback, setProductFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
-  const [isExportingCsv, setIsExportingCsv] = useState(false);
   const [isExportingExcel, setIsExportingExcel] = useState(false);
 
   // Status Normalization Helpers (Supports both Postgres ENUM IDs, Labels, and Legacy strings)
@@ -148,20 +146,6 @@ export const AdminDashboardPage: React.FC = () => {
       alert('Error al descargar el archivo Excel.');
     } finally {
       setIsExportingExcel(false);
-    }
-  };
-
-  const handleDownloadCsv = async () => {
-    setIsExportingCsv(true);
-    try {
-      const ok = await downloadSalesReportCsv(adminSedeId);
-      if (!ok) {
-        alert('No se pudo generar el reporte CSV en este momento.');
-      }
-    } catch {
-      alert('Error al descargar el archivo CSV.');
-    } finally {
-      setIsExportingCsv(false);
     }
   };
 
@@ -852,21 +836,11 @@ export const AdminDashboardPage: React.FC = () => {
                   <button
                     onClick={handleDownloadExcel}
                     disabled={isExportingExcel}
-                    className="px-4 py-2 rounded-xl bg-primary-container hover:bg-primary text-on-primary text-xs font-bold flex items-center gap-2 transition-all shadow-sm active:scale-95 disabled:opacity-50"
+                    className="px-4 py-2.5 rounded-xl bg-primary-container hover:bg-primary text-on-primary text-xs font-bold flex items-center gap-2 transition-all shadow-sm active:scale-95 disabled:opacity-50"
                     title="Descargar reporte profesional formateado en Excel (.xlsx)"
                   >
                     <span className="material-symbols-outlined text-[18px]">table_view</span>
                     <span>{isExportingExcel ? 'Generando Excel...' : 'Descargar Excel (.xlsx)'}</span>
-                  </button>
-
-                  <button
-                    onClick={handleDownloadCsv}
-                    disabled={isExportingCsv}
-                    className="px-3.5 py-2 rounded-xl bg-surface-container-high hover:bg-surface-container-highest text-on-surface text-xs font-semibold border border-outline-variant/30 flex items-center gap-1.5 transition-all shadow-xs active:scale-95 disabled:opacity-50"
-                    title="Descargar reporte plano en formato CSV"
-                  >
-                    <span className="material-symbols-outlined text-[17px] text-on-surface-variant">download</span>
-                    <span>{isExportingCsv ? 'Generando...' : 'Descargar CSV'}</span>
                   </button>
                 </div>
               </div>

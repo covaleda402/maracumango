@@ -34,14 +34,13 @@ export const RoleModal: React.FC = () => {
 
   // Password reset states
   const [resetEmail, setResetEmail] = useState('');
-  const [resetCode, setResetCode] = useState('');
+  const [resetToken, setResetToken] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [resetStep, setResetStep] = useState<1 | 2>(1);
   const [resetSuccessMessage, setResetSuccessMessage] = useState<string | null>(null);
   const [generatedCodeHint, setGeneratedCodeHint] = useState<string | null>(null);
   const [emailDispatched, setEmailDispatched] = useState<boolean | null>(null);
-  const [unconfiguredSmtpCode, setUnconfiguredSmtpCode] = useState<string | null>(null);
 
   // Profile edit states (for logged in customers)
   const [editPhone, setEditPhone] = useState('');
@@ -51,6 +50,24 @@ export const RoleModal: React.FC = () => {
 
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // Detect resetToken and email from URL parameters on mount
+  useEffect(() => {
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      const token = urlParams.get('resetToken');
+      const email = urlParams.get('email');
+      if (token) {
+        setResetToken(token);
+        if (email) setResetEmail(email);
+        setResetStep(2);
+        setModalTab('forgot');
+        setIsRoleModalOpen(true);
+      }
+    } catch (err) {
+      console.error('Error al detectar enlace de recuperación en URL:', err);
+    }
+  }, [setIsRoleModalOpen]);
 
   useEffect(() => {
     if (currentUser) {
@@ -160,26 +177,23 @@ export const RoleModal: React.FC = () => {
     try {
       const res = await apiService.forgotPassword(cleanEmail);
       if (res.success) {
-        setResetStep(2);
-        setResetCode('');
         if (res.emailSent) {
           setEmailDispatched(true);
-          setUnconfiguredSmtpCode(null);
           setGeneratedCodeHint(
-            `Hemos enviado el código de 6 dígitos a ${cleanEmail}. Por favor revisa tu bandeja de entrada o spam e ingrésalo a continuación.`
+            `Hemos enviado un enlace seguro de un solo uso a tu correo ${cleanEmail}. Por favor revisa tu bandeja de entrada o carpeta de spam y haz clic en el botón para restablecer tu contraseña.`
           );
         } else {
           setEmailDispatched(false);
-          setUnconfiguredSmtpCode(res.code || null);
+          if (res.resetToken) setResetToken(res.resetToken);
           setGeneratedCodeHint(
-            'El servidor en Vercel aún no tiene configuradas credenciales SMTP/Gmail para despachar correos a internet.'
+            'El servidor en Vercel aún no tiene configuradas credenciales SMTP/Gmail para despachar correos a internet. Para tus pruebas locales o de demostración, puedes utilizar el enlace criptográfico generado a continuación.'
           );
         }
       } else {
-        setErrorMessage(res.error || 'No se pudo generar el código de recuperación.');
+        setErrorMessage(res.error || 'No se pudo generar el enlace de recuperación.');
       }
     } catch {
-      setErrorMessage('Error de conexión al solicitar código.');
+      setErrorMessage('Error de conexión al solicitar el enlace de recuperación.');
     } finally {
       setIsLoading(false);
     }
@@ -190,10 +204,10 @@ export const RoleModal: React.FC = () => {
     setErrorMessage(null);
 
     const cleanEmail = resetEmail.trim().toLowerCase();
-    const cleanCode = resetCode.trim();
+    const tokenToUse = resetToken.trim();
 
-    if (!cleanCode || cleanCode.length < 6) {
-      setErrorMessage('Ingresa el código numérico de 6 dígitos.');
+    if (!tokenToUse) {
+      setErrorMessage('Falta el enlace o token de seguridad. Vuelve a hacer clic en el enlace recibido en tu correo.');
       return;
     }
     if (!newPassword || newPassword.length < 6) {
@@ -209,20 +223,28 @@ export const RoleModal: React.FC = () => {
     try {
       const res = await apiService.resetPassword({
         email: cleanEmail,
-        code: cleanCode,
+        token: tokenToUse,
         newPassword,
       });
 
       if (res.success) {
-        setResetSuccessMessage('¡Contraseña restablecida exitosamente! Ya puedes iniciar sesión.');
+        setResetSuccessMessage('¡Contraseña restablecida exitosamente! Ya puedes iniciar sesión con tu nueva contraseña.');
+        try {
+          const newUrl = window.location.pathname;
+          window.history.replaceState({}, document.title, newUrl);
+        } catch (_) {}
         setResetStep(1);
+        setResetToken('');
+        setNewPassword('');
+        setConfirmPassword('');
         setLoginEmail(cleanEmail);
         setLoginPassword('');
+        setModalTab('login');
       } else {
-        setErrorMessage(res.error || 'Error al restablecer contraseña.');
+        setErrorMessage(res.error || 'Error al restablecer la contraseña.');
       }
     } catch {
-      setErrorMessage('Error de conexión al restablecer contraseña.');
+      setErrorMessage('Error de conexión al restablecer la contraseña.');
     } finally {
       setIsLoading(false);
     }
@@ -781,135 +803,163 @@ export const RoleModal: React.FC = () => {
             {modalTab === 'forgot' && (
               <div className="space-y-3.5">
                 {resetStep === 1 ? (
-                  <form onSubmit={handleRequestResetCode} className="space-y-3.5">
-                    <div>
-                      <label className="block text-xs font-medium text-on-surface mb-1">
-                        Correo Electrónico de tu Cuenta
-                      </label>
-                      <input
-                        type="email"
-                        value={resetEmail}
-                        onChange={(e) => setResetEmail(e.target.value)}
-                        placeholder="tu_correo@ejemplo.com"
-                        className="w-full px-3.5 py-2.5 rounded-xl border border-outline-variant/30 bg-surface-container-lowest text-xs text-on-surface focus:outline-none focus:ring-2 focus:ring-primary"
-                        required
-                      />
-                      <p className="text-[10px] text-on-surface-variant mt-1">
-                        Ingresa el correo con el que te registraste (Cliente, Trabajador o Administrador).
-                      </p>
-                    </div>
-
-                    <button
-                      type="submit"
-                      disabled={isLoading}
-                      className="w-full py-3 rounded-2xl bg-primary-container text-on-primary font-bold text-xs shadow-md hover:bg-primary transition-all flex items-center justify-center gap-2"
-                    >
-                      {isLoading ? (
-                        <span>Generando código...</span>
-                      ) : (
-                        <>
-                          <span className="material-symbols-outlined text-[18px]">send</span>
-                          <span>Obtener Código de Recuperación</span>
-                        </>
-                      )}
-                    </button>
-                  </form>
-                ) : (
-                  <form onSubmit={handlePerformPasswordReset} className="space-y-3">
-                    {emailDispatched === true && (
-                      <div className="p-3.5 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 text-xs text-on-surface flex items-start gap-2.5">
-                        <span className="material-symbols-outlined text-emerald-600 text-[22px] shrink-0 mt-0.5">
-                          mark_email_read
-                        </span>
-                        <div className="leading-snug">
-                          <strong className="text-emerald-700 dark:text-emerald-300">¡Correo enviado con éxito!</strong>
-                          <p className="mt-1 text-[11px] text-on-surface-variant">
-                            {generatedCodeHint}
-                          </p>
-                        </div>
-                      </div>
-                    )}
-
-                    {emailDispatched === false && unconfiguredSmtpCode && (
-                      <div className="p-3.5 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-xs text-on-surface flex flex-col gap-2">
-                        <div className="flex items-start gap-2.5">
-                          <span className="material-symbols-outlined text-amber-600 text-[22px] shrink-0 mt-0.5">
-                            mail_lock
+                  <div>
+                    {emailDispatched === true ? (
+                      <div className="space-y-4">
+                        <div className="p-4 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 text-xs text-on-surface flex items-start gap-3">
+                          <span className="material-symbols-outlined text-emerald-600 text-[26px] shrink-0 mt-0.5">
+                            mark_email_read
                           </span>
-                          <div className="leading-snug">
-                            <strong className="text-amber-800 dark:text-amber-300">Servicio de Correo No Configurado en Vercel:</strong>
-                            <p className="mt-1 text-[11px] text-on-surface-variant">
-                              El backend aún no tiene conectada una cuenta SMTP/Gmail en las variables de entorno de Vercel para enviar el correo a tu bandeja. Para que puedas recuperar tu cuenta en tus pruebas, tu código de 6 dígitos es:
+                          <div className="leading-snug space-y-1">
+                            <strong className="text-emerald-700 dark:text-emerald-300 font-bold text-sm block">
+                              ¡Enlace de recuperación enviado!
+                            </strong>
+                            <p className="text-on-surface-variant text-[11px]">
+                              {generatedCodeHint}
+                            </p>
+                            <p className="text-[10px] text-on-surface-variant font-medium pt-1">
+                              ⏳ El enlace expira en 15 minutos por seguridad y solo puede usarse una vez.
                             </p>
                           </div>
                         </div>
 
-                        <div className="flex items-center justify-between p-2.5 rounded-xl bg-surface-container-lowest border border-amber-500/30">
-                          <span className="font-mono font-black text-xl tracking-widest text-primary pl-2">
-                            {unconfiguredSmtpCode}
-                          </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setModalTab('login');
+                            setEmailDispatched(null);
+                            setErrorMessage(null);
+                          }}
+                          className="w-full py-3 rounded-2xl bg-primary text-on-primary font-bold text-xs shadow-md hover:opacity-95 transition-all flex items-center justify-center gap-2"
+                        >
+                          <span className="material-symbols-outlined text-[18px]">login</span>
+                          <span>Volver a Iniciar Sesión</span>
+                        </button>
+                      </div>
+                    ) : (
+                      <form onSubmit={handleRequestResetCode} className="space-y-3.5">
+                        {emailDispatched === false && resetToken && (
+                          <div className="p-3.5 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-xs text-on-surface flex flex-col gap-2.5">
+                            <div className="flex items-start gap-2.5">
+                              <span className="material-symbols-outlined text-amber-600 text-[22px] shrink-0 mt-0.5">
+                                mail_lock
+                              </span>
+                              <div className="leading-snug">
+                                <strong className="text-amber-800 dark:text-amber-300 font-bold">
+                                  Servicio de Correo No Configurado en Vercel:
+                                </strong>
+                                <p className="mt-1 text-[11px] text-on-surface-variant">
+                                  {generatedCodeHint}
+                                </p>
+                              </div>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => setResetStep(2)}
+                              className="w-full py-2.5 px-3 rounded-xl bg-primary-container text-on-primary font-bold text-xs hover:bg-primary transition-all shadow-xs flex items-center justify-center gap-2"
+                            >
+                              <span className="material-symbols-outlined text-[18px]">key</span>
+                              <span>Continuar con el Enlace Criptográfico Generado</span>
+                            </button>
+                          </div>
+                        )}
+
+                        <div>
+                          <label className="block text-xs font-medium text-on-surface mb-1">
+                            Correo Electrónico de tu Cuenta <span className="text-error">*</span>
+                          </label>
+                          <input
+                            type="email"
+                            value={resetEmail}
+                            onChange={(e) => setResetEmail(e.target.value)}
+                            placeholder="tu_correo@ejemplo.com"
+                            className="w-full px-3.5 py-2.5 rounded-xl border border-outline-variant/30 bg-surface-container-lowest text-xs text-on-surface focus:outline-none focus:ring-2 focus:ring-primary"
+                            required
+                          />
+                          <p className="text-[10px] text-on-surface-variant mt-1">
+                            Ingresa el correo registrado de tu cuenta de Cliente, Trabajador o Administrador.
+                          </p>
+                        </div>
+
+                        <button
+                          type="submit"
+                          disabled={isLoading}
+                          className="w-full py-3 rounded-2xl bg-primary-container text-on-primary font-bold text-xs shadow-md hover:bg-primary transition-all flex items-center justify-center gap-2"
+                        >
+                          {isLoading ? (
+                            <span>Generando enlace seguro...</span>
+                          ) : (
+                            <>
+                              <span className="material-symbols-outlined text-[18px]">send</span>
+                              <span>Enviar Enlace de Recuperación</span>
+                            </>
+                          )}
+                        </button>
+
+                        <div className="text-center pt-1">
                           <button
                             type="button"
-                            onClick={() => setResetCode(unconfiguredSmtpCode)}
-                            className="px-3 py-1.5 rounded-lg bg-primary-container text-on-primary text-[11px] font-bold hover:bg-primary transition-all shadow-xs"
+                            onClick={() => {
+                              setModalTab('login');
+                              setErrorMessage(null);
+                            }}
+                            className="text-[11px] text-primary font-bold hover:underline"
                           >
-                            Usar este código
+                            ¿Recordaste tu contraseña? Inicia sesión aquí
                           </button>
                         </div>
-                      </div>
+                      </form>
                     )}
-
-                    {!emailDispatched && !unconfiguredSmtpCode && generatedCodeHint && (
-                      <div className="p-3 rounded-2xl bg-secondary-container/20 border border-secondary-container/30 text-xs text-on-surface flex items-start gap-2.5">
-                        <span className="material-symbols-outlined text-secondary text-[20px] shrink-0 mt-0.5">
-                          mark_email_read
-                        </span>
-                        <div className="leading-snug">
-                          <strong>Revisa tu correo:</strong> {generatedCodeHint}
-                        </div>
+                  </div>
+                ) : (
+                  <form onSubmit={handlePerformPasswordReset} className="space-y-3.5">
+                    <div className="p-3 rounded-xl bg-surface-container border border-outline-variant/30 flex items-center justify-between text-xs">
+                      <div>
+                        <span className="text-[11px] text-on-surface-variant block">Restableciendo contraseña para:</span>
+                        <strong className="text-on-surface text-xs">{resetEmail || 'Cuenta verificada'}</strong>
                       </div>
-                    )}
-
-                    <div>
-                      <label className="block text-xs font-medium text-on-surface mb-1">
-                        Código de 6 Dígitos <span className="text-error">*</span>
-                      </label>
-                      <input
-                        type="text"
-                        maxLength={6}
-                        value={resetCode}
-                        onChange={(e) => setResetCode(e.target.value.replace(/\D/g, ''))}
-                        placeholder="Ej: 123456"
-                        className="w-full px-3.5 py-2.5 rounded-xl border border-outline-variant/30 bg-surface-container-lowest text-center tracking-widest text-base font-bold text-on-surface focus:outline-none focus:ring-2 focus:ring-primary"
-                        required
-                        autoFocus
-                      />
+                      <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 text-[10px] font-bold">
+                        Token Verificado
+                      </span>
                     </div>
 
                     <div>
                       <label className="block text-xs font-medium text-on-surface mb-1">
-                        Nueva Contraseña (Mínimo 6 caracteres)
+                        Nueva Contraseña (Mínimo 6 caracteres) <span className="text-error">*</span>
                       </label>
-                      <input
-                        type={showPassword ? 'text' : 'password'}
-                        value={newPassword}
-                        onChange={(e) => setNewPassword(e.target.value)}
-                        placeholder="Nueva contraseña segura"
-                        className="w-full px-3.5 py-2 rounded-xl border border-outline-variant/30 bg-surface-container-lowest text-xs text-on-surface focus:outline-none focus:ring-2 focus:ring-primary"
-                        required
-                      />
+                      <div className="relative">
+                        <input
+                          type={showPassword ? 'text' : 'password'}
+                          value={newPassword}
+                          onChange={(e) => setNewPassword(e.target.value)}
+                          placeholder="Ingresa tu nueva contraseña"
+                          className="w-full px-3.5 py-2.5 rounded-xl border border-outline-variant/30 bg-surface-container-lowest text-xs text-on-surface focus:outline-none focus:ring-2 focus:ring-primary pr-9"
+                          required
+                          autoFocus
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(!showPassword)}
+                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-on-surface-variant hover:text-on-surface"
+                        >
+                          <span className="material-symbols-outlined text-[18px]">
+                            {showPassword ? 'visibility_off' : 'visibility'}
+                          </span>
+                        </button>
+                      </div>
                     </div>
 
                     <div>
                       <label className="block text-xs font-medium text-on-surface mb-1">
-                        Confirmar Nueva Contraseña
+                        Confirmar Nueva Contraseña <span className="text-error">*</span>
                       </label>
                       <input
                         type={showPassword ? 'text' : 'password'}
                         value={confirmPassword}
                         onChange={(e) => setConfirmPassword(e.target.value)}
                         placeholder="Repite la nueva contraseña"
-                        className="w-full px-3.5 py-2 rounded-xl border border-outline-variant/30 bg-surface-container-lowest text-xs text-on-surface focus:outline-none focus:ring-2 focus:ring-primary"
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-outline-variant/30 bg-surface-container-lowest text-xs text-on-surface focus:outline-none focus:ring-2 focus:ring-primary"
                         required
                       />
                     </div>
@@ -924,7 +974,7 @@ export const RoleModal: React.FC = () => {
                       ) : (
                         <>
                           <span className="material-symbols-outlined text-[18px]">lock_reset</span>
-                          <span>Restablecer mi Contraseña</span>
+                          <span>Guardar Nueva Contraseña</span>
                         </>
                       )}
                     </button>
@@ -932,10 +982,13 @@ export const RoleModal: React.FC = () => {
                     <div className="flex justify-between items-center pt-1 text-[11px]">
                       <button
                         type="button"
-                        onClick={() => setResetStep(1)}
+                        onClick={() => {
+                          setResetStep(1);
+                          setEmailDispatched(null);
+                        }}
                         className="text-on-surface-variant hover:text-on-surface underline"
                       >
-                        Reenviar código
+                        Solicitar otro enlace
                       </button>
                       <button
                         type="button"

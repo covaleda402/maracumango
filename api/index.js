@@ -79,8 +79,11 @@ var ensureSchema = async () => {
           );
 
           -- 6. Indexes for performance and safety
+          ALTER TABLE password_reset_tokens ADD COLUMN IF NOT EXISTS token_hash VARCHAR(100);
+          ALTER TABLE password_reset_tokens ALTER COLUMN code DROP NOT NULL;
           CREATE INDEX IF NOT EXISTS idx_users_email_lower ON users(LOWER(email));
           CREATE INDEX IF NOT EXISTS idx_reset_email_code ON password_reset_tokens(email, code);
+          CREATE INDEX IF NOT EXISTS idx_reset_token_hash ON password_reset_tokens(token_hash);
 
           -- 7. Self-healing cleanup: Purge deleted/covaleda branches and fix customer roles
           UPDATE users SET branch_id = 'sede-1' WHERE branch_id = 'sede-1795151700722' OR branch_id IN (SELECT id FROM branches WHERE is_active = FALSE OR LOWER(name) LIKE '%covaleda%');
@@ -2553,6 +2556,7 @@ var settings_default = router6;
 import { Router as Router7 } from "express";
 import bcrypt from "bcryptjs";
 import jwt2 from "jsonwebtoken";
+import crypto from "crypto";
 
 // server/middleware/securityLimiter.ts
 var inMemoryAttempts = /* @__PURE__ */ new Map();
@@ -2667,7 +2671,7 @@ var resetSecurityAttempts = async (identifier) => {
 
 // server/services/emailService.ts
 import nodemailer from "nodemailer";
-var buildResetEmailHtml = (code, recipientName) => {
+var buildResetEmailHtml = (resetLink, recipientName) => {
   const greeting = recipientName ? `Hola <strong>${recipientName}</strong>,` : "Hola,";
   return `
 <!DOCTYPE html>
@@ -2675,7 +2679,7 @@ var buildResetEmailHtml = (code, recipientName) => {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>C\xF3digo de Recuperaci\xF3n - Maracumango</title>
+  <title>Restablecer Contrase\xF1a - Maracumango</title>
 </head>
 <body style="margin: 0; padding: 0; background-color: #f6f8f3; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #1a1c19;">
   <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color: #f6f8f3; padding: 30px 15px;">
@@ -2701,27 +2705,27 @@ var buildResetEmailHtml = (code, recipientName) => {
                 ${greeting}
               </p>
               <p style="font-size: 14px; line-height: 1.5; color: #43483f; margin: 0 0 24px;">
-                Recibimos una solicitud para restablecer la contrase\xF1a de acceso a tu cuenta. Usa el siguiente c\xF3digo de verificaci\xF3n de 6 d\xEDgitos para continuar:
+                Recibimos una solicitud para restablecer la contrase\xF1a de acceso a tu cuenta en <strong>Maracumango</strong>. Haz clic en el siguiente bot\xF3n seguro para crear tu nueva contrase\xF1a:
               </p>
 
-              <!-- Code Box -->
-              <div style="background-color: #f1f5ea; border: 2px dashed #468600; border-radius: 16px; padding: 20px; text-align: center; margin: 0 0 24px;">
-                <span style="font-family: 'Courier New', Courier, monospace; font-size: 34px; font-weight: 800; letter-spacing: 8px; color: #2d6a00; display: inline-block;">
-                  ${code}
-                </span>
-                <p style="margin: 8px 0 0; font-size: 12px; color: #5f655b; font-weight: 600;">
-                  \u23F3 V\xE1lido \xFAnicamente durante los pr\xF3ximos 15 minutos
-                </p>
+              <!-- CTA Button Box -->
+              <div style="text-align: center; margin: 28px 0;">
+                <a href="${resetLink}" target="_blank" rel="noopener noreferrer" style="background-color: #2d6a00; color: #ffffff; padding: 14px 32px; border-radius: 14px; font-size: 15px; font-weight: 700; text-decoration: none; display: inline-block; box-shadow: 0 4px 14px rgba(45,106,0,0.3);">
+                  \u{1F510} Restablecer mi Contrase\xF1a
+                </a>
               </div>
 
               <div style="background-color: #fff9e6; border-left: 4px solid #f59e0b; padding: 12px 14px; border-radius: 8px; margin-bottom: 24px;">
                 <p style="margin: 0; font-size: 12px; line-height: 1.4; color: #78350f;">
-                  <strong>Seguridad:</strong> Se permite un m\xE1ximo de 5 intentos fallidos. Si t\xFA no solicitaste este c\xF3digo, puedes ignorar este correo de forma segura; tu contrase\xF1a seguir\xE1 protegida.
+                  <strong>Seguridad criptogr\xE1fica:</strong> Este enlace es \xFAnico, de un solo uso y expirar\xE1 autom\xE1ticamente en <strong>15 minutos</strong>. Si t\xFA no solicitaste este cambio, puedes ignorar este mensaje de forma segura.
                 </p>
               </div>
 
-              <p style="font-size: 12px; color: #73796e; line-height: 1.4; margin: 0;">
-                Si necesitas ayuda adicional, cont\xE1ctanos a trav\xE9s de nuestras l\xEDneas oficiales en Neiva.
+              <p style="font-size: 11px; color: #73796e; line-height: 1.4; margin: 0 0 8px;">
+                Si el bot\xF3n de arriba no abre, copia y pega el siguiente enlace seguro en tu navegador:
+              </p>
+              <p style="font-size: 11px; color: #2d6a00; word-break: break-all; margin: 0; font-family: monospace;">
+                ${resetLink}
               </p>
             </td>
           </tr>
@@ -2742,7 +2746,7 @@ var buildResetEmailHtml = (code, recipientName) => {
 </html>
   `.trim();
 };
-var sendPasswordResetEmail = async (toEmail, code, recipientName) => {
+var sendPasswordResetEmail = async (toEmail, resetLink, recipientName) => {
   const resendApiKey = process.env.RESEND_API_KEY;
   if (resendApiKey) {
     try {
@@ -2756,13 +2760,13 @@ var sendPasswordResetEmail = async (toEmail, code, recipientName) => {
         body: JSON.stringify({
           from: fromEmail,
           to: [toEmail],
-          subject: `${code} es tu c\xF3digo de recuperaci\xF3n - Maracumango`,
-          html: buildResetEmailHtml(code, recipientName)
+          subject: "Enlace seguro para restablecer tu contrase\xF1a - Maracumango",
+          html: buildResetEmailHtml(resetLink, recipientName)
         })
       });
       if (res.ok) {
-        console.log(`\u2705 [EmailService:Resend] Correo enviado exitosamente a ${toEmail}`);
-        return { sent: true, message: "Correo enviado exitosamente v\xEDa Resend." };
+        console.log(`\u2705 [EmailService:Resend] Enlace de recuperaci\xF3n enviado exitosamente a ${toEmail}`);
+        return { sent: true, message: "Enlace enviado exitosamente v\xEDa Resend." };
       } else {
         const errJson = await res.json().catch(() => ({}));
         console.warn("\u26A0\uFE0F [EmailService:Resend Error]:", errJson);
@@ -2804,20 +2808,21 @@ var sendPasswordResetEmail = async (toEmail, code, recipientName) => {
       await transporter.sendMail({
         from: smtpFrom,
         to: toEmail,
-        subject: `${code} es tu c\xF3digo de recuperaci\xF3n de contrase\xF1a - Maracumango`,
+        subject: "Enlace seguro para restablecer tu contrase\xF1a - Maracumango",
         text: `Hola ${recipientName || "Cliente"},
 
-Tu c\xF3digo de recuperaci\xF3n de contrase\xF1a para Maracumango es: ${code}
+Para restablecer la contrase\xF1a de tu cuenta en Maracumango, ingresa al siguiente enlace seguro:
+${resetLink}
 
-Este c\xF3digo vence en 15 minutos.
+Este enlace es de un solo uso y vence en 15 minutos.
 
-Si no solicitaste este cambio, puedes ignorar este mensaje de forma segura.
+Si no solicitaste este cambio, puedes ignorar este mensaje.
 
 Maracumango - Neiva, Huila`,
-        html: buildResetEmailHtml(code, recipientName)
+        html: buildResetEmailHtml(resetLink, recipientName)
       });
-      console.log(`\u2705 [EmailService:SMTP] Correo de recuperaci\xF3n enviado exitosamente a ${toEmail}`);
-      return { sent: true, message: "Correo enviado exitosamente v\xEDa SMTP." };
+      console.log(`\u2705 [EmailService:SMTP] Enlace de recuperaci\xF3n enviado exitosamente a ${toEmail}`);
+      return { sent: true, message: "Enlace enviado exitosamente v\xEDa SMTP." };
     } catch (err) {
       console.error("\u274C [EmailService:SMTP Error]:", err.message);
       return {
@@ -3175,22 +3180,28 @@ router7.post("/forgot-password", async (req, res) => {
       remainingMinutes: ipLock.remainingMinutes
     });
   }
-  const code = Math.floor(1e5 + Math.random() * 9e5).toString();
+  const rawToken = crypto.randomBytes(32).toString("hex");
+  const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
   const expiresAt = Date.now() + 15 * 60 * 1e3;
   const tokenId = `rst-${Date.now()}`;
+  const clientOrigin = req.headers.origin || (req.headers.referer ? new URL(req.headers.referer).origin : "") || process.env.APP_URL || "https://maracumango-theta.vercel.app";
+  const resetLink = `${clientOrigin}/?resetToken=${rawToken}&email=${encodeURIComponent(cleanEmail)}`;
   if (!isDatabaseConfigured()) {
     devFallbackResetTokens.push({
       id: tokenId,
       email: cleanEmail,
-      code,
+      code: rawToken.slice(0, 6),
+      tokenHash,
       expiresAt,
       used: false
     });
-    const emailResult = await sendPasswordResetEmail(cleanEmail, code);
+    const emailResult = await sendPasswordResetEmail(cleanEmail, resetLink);
     return res.json({
-      message: emailResult.sent ? "C\xF3digo de recuperaci\xF3n de 6 d\xEDgitos enviado exitosamente a tu correo electr\xF3nico. V\xE1lido por 15 minutos." : "C\xF3digo de recuperaci\xF3n de 6 d\xEDgitos generado exitosamente. V\xE1lido por 15 minutos.",
+      message: emailResult.sent ? "Enlace de restablecimiento seguro enviado exitosamente a tu correo electr\xF3nico. V\xE1lido por 15 minutos." : "Enlace de restablecimiento generado exitosamente. V\xE1lido por 15 minutos.",
       emailSent: emailResult.sent,
-      code,
+      resetLink: emailResult.sent ? void 0 : resetLink,
+      resetToken: emailResult.sent ? void 0 : rawToken,
+      code: rawToken.slice(0, 6),
       email: cleanEmail,
       expiresInMinutes: 15
     });
@@ -3207,30 +3218,32 @@ router7.post("/forgot-password", async (req, res) => {
     const user = userCheck.rows[0];
     await query("UPDATE password_reset_tokens SET used = TRUE WHERE LOWER(email) = $1", [cleanEmail]);
     await query(
-      `INSERT INTO password_reset_tokens (id, user_id, email, code, expires_at, used)
-       VALUES ($1, $2, $3, $4, $5, FALSE)`,
-      [tokenId, user.id, cleanEmail, code, new Date(expiresAt).toISOString()]
+      `INSERT INTO password_reset_tokens (id, user_id, email, code, token_hash, expires_at, used)
+       VALUES ($1, $2, $3, $4, $5, $6, FALSE)`,
+      [tokenId, user.id, cleanEmail, rawToken.slice(0, 6), tokenHash, new Date(expiresAt).toISOString()]
     );
-    const emailResult = await sendPasswordResetEmail(cleanEmail, code, user.first_name);
+    const emailResult = await sendPasswordResetEmail(cleanEmail, resetLink, user.first_name);
     res.json({
-      message: emailResult.sent ? "C\xF3digo de recuperaci\xF3n de 6 d\xEDgitos enviado exitosamente a tu correo electr\xF3nico. V\xE1lido por 15 minutos." : "C\xF3digo de recuperaci\xF3n generado. No se detect\xF3 un servidor SMTP configurado en Vercel.",
+      message: emailResult.sent ? "Enlace de restablecimiento seguro enviado exitosamente a tu correo electr\xF3nico. V\xE1lido por 15 minutos." : "Enlace de restablecimiento generado. No se detect\xF3 un servidor SMTP configurado en Vercel.",
       emailSent: emailResult.sent,
-      code,
+      resetLink: emailResult.sent ? void 0 : resetLink,
+      resetToken: emailResult.sent ? void 0 : rawToken,
+      code: rawToken.slice(0, 6),
       email: cleanEmail,
       expiresInMinutes: 15
     });
   } catch (error) {
-    console.error("Error generating reset code:", error.message);
+    console.error("Error generating reset link:", error.message);
     res.status(500).json({ error: error.message });
   }
 });
 router7.post("/reset-password", async (req, res) => {
-  const { email, code, newPassword } = req.body;
-  if (!email || !code || !newPassword) {
-    return res.status(400).json({ error: "Correo, c\xF3digo de 6 d\xEDgitos y nueva contrase\xF1a son obligatorios." });
+  const { email, token, code, newPassword } = req.body;
+  const suppliedToken = String(token || code || "").trim();
+  if (!email || !suppliedToken || !newPassword) {
+    return res.status(400).json({ error: "Correo, token de restablecimiento y nueva contrase\xF1a son obligatorios." });
   }
   const cleanEmail = email.toLowerCase().trim();
-  const cleanCode = String(code).trim();
   const clientIp = req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.ip || "unknown_ip";
   const emailKey = normalizeIdentifier("reset", cleanEmail);
   const ipKey = normalizeIdentifier("reset_ip", clientIp);
@@ -3253,15 +3266,16 @@ router7.post("/reset-password", async (req, res) => {
   if (newPassword.length < 6) {
     return res.status(400).json({ error: "La nueva contrase\xF1a debe tener al menos 6 caracteres." });
   }
+  const computedHash = crypto.createHash("sha256").update(suppliedToken).digest("hex");
   if (!isDatabaseConfigured()) {
     const validToken = devFallbackResetTokens.find(
-      (t) => t.email === cleanEmail && t.code === cleanCode && !t.used && t.expiresAt > Date.now()
+      (t) => t.email === cleanEmail && (t.tokenHash === computedHash || t.code === suppliedToken || t.tokenHash === suppliedToken) && !t.used && t.expiresAt > Date.now()
     );
     if (!validToken) {
       const fail = await recordFailedAttempt(emailKey);
       await recordFailedAttempt(ipKey);
       return res.status(fail.isBlocked ? 429 : 400).json({
-        error: `C\xF3digo de recuperaci\xF3n incorrecto o vencido. ${fail.message}`,
+        error: `Enlace o token de recuperaci\xF3n incorrecto o vencido. ${fail.message}`,
         blocked: fail.isBlocked,
         attemptsLeft: fail.attemptsLeft
       });
@@ -3279,15 +3293,18 @@ router7.post("/reset-password", async (req, res) => {
   try {
     const tokenRes = await query(
       `SELECT id, user_id FROM password_reset_tokens
-       WHERE LOWER(email) = $1 AND code = $2 AND used = FALSE AND expires_at > CURRENT_TIMESTAMP
+       WHERE LOWER(email) = $1 
+         AND (token_hash = $2 OR code = $3)
+         AND used = FALSE 
+         AND expires_at > CURRENT_TIMESTAMP
        ORDER BY created_at DESC LIMIT 1`,
-      [cleanEmail, cleanCode]
+      [cleanEmail, computedHash, suppliedToken]
     );
     if (tokenRes.rows.length === 0) {
       const fail = await recordFailedAttempt(emailKey);
       await recordFailedAttempt(ipKey);
       return res.status(fail.isBlocked ? 429 : 400).json({
-        error: `C\xF3digo de verificaci\xF3n incorrecto o expirado. ${fail.message}`,
+        error: `El enlace o token de verificaci\xF3n es inv\xE1lido o ha expirado. ${fail.message}`,
         blocked: fail.isBlocked,
         attemptsLeft: fail.attemptsLeft,
         remainingMinutes: fail.remainingMinutes

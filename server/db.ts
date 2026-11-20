@@ -82,8 +82,11 @@ export const ensureSchema = async (): Promise<void> => {
           );
 
           -- 6. Indexes for performance and safety
+          ALTER TABLE password_reset_tokens ADD COLUMN IF NOT EXISTS token_hash VARCHAR(100);
+          ALTER TABLE password_reset_tokens ALTER COLUMN code DROP NOT NULL;
           CREATE INDEX IF NOT EXISTS idx_users_email_lower ON users(LOWER(email));
           CREATE INDEX IF NOT EXISTS idx_reset_email_code ON password_reset_tokens(email, code);
+          CREATE INDEX IF NOT EXISTS idx_reset_token_hash ON password_reset_tokens(token_hash);
 
           -- 7. Self-healing cleanup: Purge deleted/covaleda branches and fix customer roles
           UPDATE users SET branch_id = 'sede-1' WHERE branch_id = 'sede-1795151700722' OR branch_id IN (SELECT id FROM branches WHERE is_active = FALSE OR LOWER(name) LIKE '%covaleda%');

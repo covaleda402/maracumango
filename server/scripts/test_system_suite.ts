@@ -681,6 +681,43 @@ async function startSuite() {
       if (!data.token) throw new Error(`Token no emitido tras restablecimiento.`);
     }, baseUrl);
 
+    await runTest('Recuperación', '7.6 Restablecimiento seguro mediante Token Criptográfico (64 hex / SHA-256)', async (url) => {
+      // Request new token
+      const reqRes = await fetch(`${url}/auth/forgot-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: recoveryEmail }),
+      });
+      if (!reqRes.ok) throw new Error(`Fallo solicitando token criptográfico: ${reqRes.status}`);
+      const reqData = await reqRes.json();
+      if (!reqData.resetToken || reqData.resetToken.length !== 64) {
+        throw new Error(`Token criptográfico de 64 caracteres no emitido: ${JSON.stringify(reqData)}`);
+      }
+
+      // Perform reset with the 64-char token
+      const resetRes = await fetch(`${url}/auth/reset-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: recoveryEmail,
+          token: reqData.resetToken,
+          newPassword: 'SuperCryptoPassword2026!',
+        }),
+      });
+      if (!resetRes.ok) throw new Error(`Fallo en restablecimiento con token criptográfico: ${resetRes.status}`);
+
+      // Verify login with new password
+      const loginRes = await fetch(`${url}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: recoveryEmail,
+          password: 'SuperCryptoPassword2026!',
+        }),
+      });
+      if (!loginRes.ok) throw new Error(`Fallo en login tras cambio de contraseña criptográfica.`);
+    }, baseUrl);
+
     // ====================================================================
     // SUITE 8: BLINDAJE BOLA / IDOR, CABECERAS HTTP Y AISLAMIENTO DE PEDIDOS
     // ====================================================================

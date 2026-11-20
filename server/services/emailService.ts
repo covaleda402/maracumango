@@ -6,7 +6,7 @@ interface SendResetEmailResult {
   error?: string;
 }
 
-const buildResetEmailHtml = (code: string, recipientName?: string): string => {
+const buildResetEmailHtml = (resetLink: string, recipientName?: string): string => {
   const greeting = recipientName ? `Hola <strong>${recipientName}</strong>,` : 'Hola,';
   return `
 <!DOCTYPE html>
@@ -14,7 +14,7 @@ const buildResetEmailHtml = (code: string, recipientName?: string): string => {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Código de Recuperación - Maracumango</title>
+  <title>Restablecer Contraseña - Maracumango</title>
 </head>
 <body style="margin: 0; padding: 0; background-color: #f6f8f3; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #1a1c19;">
   <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color: #f6f8f3; padding: 30px 15px;">
@@ -40,27 +40,27 @@ const buildResetEmailHtml = (code: string, recipientName?: string): string => {
                 ${greeting}
               </p>
               <p style="font-size: 14px; line-height: 1.5; color: #43483f; margin: 0 0 24px;">
-                Recibimos una solicitud para restablecer la contraseña de acceso a tu cuenta. Usa el siguiente código de verificación de 6 dígitos para continuar:
+                Recibimos una solicitud para restablecer la contraseña de acceso a tu cuenta en <strong>Maracumango</strong>. Haz clic en el siguiente botón seguro para crear tu nueva contraseña:
               </p>
 
-              <!-- Code Box -->
-              <div style="background-color: #f1f5ea; border: 2px dashed #468600; border-radius: 16px; padding: 20px; text-align: center; margin: 0 0 24px;">
-                <span style="font-family: 'Courier New', Courier, monospace; font-size: 34px; font-weight: 800; letter-spacing: 8px; color: #2d6a00; display: inline-block;">
-                  ${code}
-                </span>
-                <p style="margin: 8px 0 0; font-size: 12px; color: #5f655b; font-weight: 600;">
-                  ⏳ Válido únicamente durante los próximos 15 minutos
-                </p>
+              <!-- CTA Button Box -->
+              <div style="text-align: center; margin: 28px 0;">
+                <a href="${resetLink}" target="_blank" rel="noopener noreferrer" style="background-color: #2d6a00; color: #ffffff; padding: 14px 32px; border-radius: 14px; font-size: 15px; font-weight: 700; text-decoration: none; display: inline-block; box-shadow: 0 4px 14px rgba(45,106,0,0.3);">
+                  🔐 Restablecer mi Contraseña
+                </a>
               </div>
 
               <div style="background-color: #fff9e6; border-left: 4px solid #f59e0b; padding: 12px 14px; border-radius: 8px; margin-bottom: 24px;">
                 <p style="margin: 0; font-size: 12px; line-height: 1.4; color: #78350f;">
-                  <strong>Seguridad:</strong> Se permite un máximo de 5 intentos fallidos. Si tú no solicitaste este código, puedes ignorar este correo de forma segura; tu contraseña seguirá protegida.
+                  <strong>Seguridad criptográfica:</strong> Este enlace es único, de un solo uso y expirará automáticamente en <strong>15 minutos</strong>. Si tú no solicitaste este cambio, puedes ignorar este mensaje de forma segura.
                 </p>
               </div>
 
-              <p style="font-size: 12px; color: #73796e; line-height: 1.4; margin: 0;">
-                Si necesitas ayuda adicional, contáctanos a través de nuestras líneas oficiales en Neiva.
+              <p style="font-size: 11px; color: #73796e; line-height: 1.4; margin: 0 0 8px;">
+                Si el botón de arriba no abre, copia y pega el siguiente enlace seguro en tu navegador:
+              </p>
+              <p style="font-size: 11px; color: #2d6a00; word-break: break-all; margin: 0; font-family: monospace;">
+                ${resetLink}
               </p>
             </td>
           </tr>
@@ -84,7 +84,7 @@ const buildResetEmailHtml = (code: string, recipientName?: string): string => {
 
 export const sendPasswordResetEmail = async (
   toEmail: string,
-  code: string,
+  resetLink: string,
   recipientName?: string
 ): Promise<SendResetEmailResult> => {
   // Option 1: Resend HTTP API (if RESEND_API_KEY is configured in Vercel)
@@ -101,14 +101,14 @@ export const sendPasswordResetEmail = async (
         body: JSON.stringify({
           from: fromEmail,
           to: [toEmail],
-          subject: `${code} es tu código de recuperación - Maracumango`,
-          html: buildResetEmailHtml(code, recipientName),
+          subject: 'Enlace seguro para restablecer tu contraseña - Maracumango',
+          html: buildResetEmailHtml(resetLink, recipientName),
         }),
       });
 
       if (res.ok) {
-        console.log(`✅ [EmailService:Resend] Correo enviado exitosamente a ${toEmail}`);
-        return { sent: true, message: 'Correo enviado exitosamente vía Resend.' };
+        console.log(`✅ [EmailService:Resend] Enlace de recuperación enviado exitosamente a ${toEmail}`);
+        return { sent: true, message: 'Enlace enviado exitosamente vía Resend.' };
       } else {
         const errJson = await res.json().catch(() => ({}));
         console.warn('⚠️ [EmailService:Resend Error]:', errJson);
@@ -158,13 +158,13 @@ export const sendPasswordResetEmail = async (
       await transporter.sendMail({
         from: smtpFrom,
         to: toEmail,
-        subject: `${code} es tu código de recuperación de contraseña - Maracumango`,
-        text: `Hola ${recipientName || 'Cliente'},\n\nTu código de recuperación de contraseña para Maracumango es: ${code}\n\nEste código vence en 15 minutos.\n\nSi no solicitaste este cambio, puedes ignorar este mensaje de forma segura.\n\nMaracumango - Neiva, Huila`,
-        html: buildResetEmailHtml(code, recipientName),
+        subject: 'Enlace seguro para restablecer tu contraseña - Maracumango',
+        text: `Hola ${recipientName || 'Cliente'},\n\nPara restablecer la contraseña de tu cuenta en Maracumango, ingresa al siguiente enlace seguro:\n${resetLink}\n\nEste enlace es de un solo uso y vence en 15 minutos.\n\nSi no solicitaste este cambio, puedes ignorar este mensaje.\n\nMaracumango - Neiva, Huila`,
+        html: buildResetEmailHtml(resetLink, recipientName),
       });
 
-      console.log(`✅ [EmailService:SMTP] Correo de recuperación enviado exitosamente a ${toEmail}`);
-      return { sent: true, message: 'Correo enviado exitosamente vía SMTP.' };
+      console.log(`✅ [EmailService:SMTP] Enlace de recuperación enviado exitosamente a ${toEmail}`);
+      return { sent: true, message: 'Enlace enviado exitosamente vía SMTP.' };
     } catch (err: any) {
       console.error('❌ [EmailService:SMTP Error]:', err.message);
       return {
