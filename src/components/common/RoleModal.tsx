@@ -40,6 +40,8 @@ export const RoleModal: React.FC = () => {
   const [resetStep, setResetStep] = useState<1 | 2>(1);
   const [resetSuccessMessage, setResetSuccessMessage] = useState<string | null>(null);
   const [generatedCodeHint, setGeneratedCodeHint] = useState<string | null>(null);
+  const [emailDispatched, setEmailDispatched] = useState<boolean | null>(null);
+  const [unconfiguredSmtpCode, setUnconfiguredSmtpCode] = useState<string | null>(null);
 
   // Profile edit states (for logged in customers)
   const [editPhone, setEditPhone] = useState('');
@@ -160,9 +162,19 @@ export const RoleModal: React.FC = () => {
       if (res.success) {
         setResetStep(2);
         setResetCode('');
-        setGeneratedCodeHint(
-          'Hemos enviado un código de verificación de 6 dígitos a tu correo electrónico registrado. Por favor búscalo en tu bandeja de entrada o spam e ingrésalo a continuación.'
-        );
+        if (res.emailSent) {
+          setEmailDispatched(true);
+          setUnconfiguredSmtpCode(null);
+          setGeneratedCodeHint(
+            `Hemos enviado el código de 6 dígitos a ${cleanEmail}. Por favor revisa tu bandeja de entrada o spam e ingrésalo a continuación.`
+          );
+        } else {
+          setEmailDispatched(false);
+          setUnconfiguredSmtpCode(res.code || null);
+          setGeneratedCodeHint(
+            'El servidor en Vercel aún no tiene configuradas credenciales SMTP/Gmail para despachar correos a internet.'
+          );
+        }
       } else {
         setErrorMessage(res.error || 'No se pudo generar el código de recuperación.');
       }
@@ -804,7 +816,50 @@ export const RoleModal: React.FC = () => {
                   </form>
                 ) : (
                   <form onSubmit={handlePerformPasswordReset} className="space-y-3">
-                    {generatedCodeHint && (
+                    {emailDispatched === true && (
+                      <div className="p-3.5 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 text-xs text-on-surface flex items-start gap-2.5">
+                        <span className="material-symbols-outlined text-emerald-600 text-[22px] shrink-0 mt-0.5">
+                          mark_email_read
+                        </span>
+                        <div className="leading-snug">
+                          <strong className="text-emerald-700 dark:text-emerald-300">¡Correo enviado con éxito!</strong>
+                          <p className="mt-1 text-[11px] text-on-surface-variant">
+                            {generatedCodeHint}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {emailDispatched === false && unconfiguredSmtpCode && (
+                      <div className="p-3.5 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-xs text-on-surface flex flex-col gap-2">
+                        <div className="flex items-start gap-2.5">
+                          <span className="material-symbols-outlined text-amber-600 text-[22px] shrink-0 mt-0.5">
+                            mail_lock
+                          </span>
+                          <div className="leading-snug">
+                            <strong className="text-amber-800 dark:text-amber-300">Servicio de Correo No Configurado en Vercel:</strong>
+                            <p className="mt-1 text-[11px] text-on-surface-variant">
+                              El backend aún no tiene conectada una cuenta SMTP/Gmail en las variables de entorno de Vercel para enviar el correo a tu bandeja. Para que puedas recuperar tu cuenta en tus pruebas, tu código de 6 dígitos es:
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between p-2.5 rounded-xl bg-surface-container-lowest border border-amber-500/30">
+                          <span className="font-mono font-black text-xl tracking-widest text-primary pl-2">
+                            {unconfiguredSmtpCode}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setResetCode(unconfiguredSmtpCode)}
+                            className="px-3 py-1.5 rounded-lg bg-primary-container text-on-primary text-[11px] font-bold hover:bg-primary transition-all shadow-xs"
+                          >
+                            Usar este código
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {!emailDispatched && !unconfiguredSmtpCode && generatedCodeHint && (
                       <div className="p-3 rounded-2xl bg-secondary-container/20 border border-secondary-container/30 text-xs text-on-surface flex items-start gap-2.5">
                         <span className="material-symbols-outlined text-secondary text-[20px] shrink-0 mt-0.5">
                           mark_email_read

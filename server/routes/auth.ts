@@ -10,6 +10,7 @@ import {
   resetSecurityAttempts,
   normalizeIdentifier,
 } from '../middleware/securityLimiter';
+import { sendPasswordResetEmail } from '../services/emailService';
 
 const router = Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'maracumango_super_secret_jwt_key_2026_prod';
@@ -427,8 +428,12 @@ router.post('/forgot-password', async (req: Request, res: Response) => {
       expiresAt,
       used: false,
     });
+    const emailResult = await sendPasswordResetEmail(cleanEmail, code);
     return res.json({
-      message: 'Código de recuperación de 6 dígitos generado exitosamente. Válido por 15 minutos.',
+      message: emailResult.sent
+        ? 'Código de recuperación de 6 dígitos enviado exitosamente a tu correo electrónico. Válido por 15 minutos.'
+        : 'Código de recuperación de 6 dígitos generado exitosamente. Válido por 15 minutos.',
+      emailSent: emailResult.sent,
       code,
       email: cleanEmail,
       expiresInMinutes: 15,
@@ -459,9 +464,15 @@ router.post('/forgot-password', async (req: Request, res: Response) => {
       [tokenId, user.id, cleanEmail, code, new Date(expiresAt).toISOString()]
     );
 
+    // Dispatch real email via SMTP / Gmail / Resend
+    const emailResult = await sendPasswordResetEmail(cleanEmail, code, user.first_name);
+
     res.json({
-      message: 'Código de recuperación de 6 dígitos generado exitosamente. Válido por 15 minutos.',
-      code, // Returned for instant user feedback and demo/recovery in UI
+      message: emailResult.sent
+        ? 'Código de recuperación de 6 dígitos enviado exitosamente a tu correo electrónico. Válido por 15 minutos.'
+        : 'Código de recuperación generado. No se detectó un servidor SMTP configurado en Vercel.',
+      emailSent: emailResult.sent,
+      code,
       email: cleanEmail,
       expiresInMinutes: 15,
     });

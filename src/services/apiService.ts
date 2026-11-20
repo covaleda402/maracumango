@@ -507,7 +507,7 @@ export const apiService = {
     }
   },
 
-  async forgotPassword(email: string): Promise<{ success: boolean; message?: string; code?: string; error?: string; blocked?: boolean }> {
+  async forgotPassword(email: string): Promise<{ success: boolean; message?: string; code?: string; emailSent?: boolean; error?: string; blocked?: boolean }> {
     try {
       const res = await fetch(`${BASE_URL}/auth/forgot-password`, {
         method: 'POST',
@@ -516,7 +516,7 @@ export const apiService = {
       });
       const data = await res.json();
       if (res.ok) {
-        return { success: true, message: data.message, code: data.code };
+        return { success: true, message: data.message, code: data.code, emailSent: data.emailSent };
       }
       return { success: false, error: data.error || 'Error al solicitar código.', blocked: !!data.blocked };
     } catch {
