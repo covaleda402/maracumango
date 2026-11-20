@@ -1328,6 +1328,327 @@ var products_default = router4;
 
 // server/routes/orders.ts
 import { Router as Router5 } from "express";
+
+// server/services/excelReportService.ts
+import ExcelJS from "exceljs";
+var generateSalesReportExcel = async (rows, options = {}) => {
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = options.businessName || "Maracumango Neiva";
+  workbook.lastModifiedBy = options.generatedBy || "Administrador Maracumango";
+  workbook.created = /* @__PURE__ */ new Date();
+  workbook.modified = /* @__PURE__ */ new Date();
+  const worksheet = workbook.addWorksheet("Reporte de Ventas", {
+    properties: { defaultRowHeight: 20 },
+    views: [
+      {
+        state: "frozen",
+        xSplit: 0,
+        ySplit: 8
+        // Freezes rows 1 through 8 (Headers remain visible while scrolling data)
+      }
+    ]
+  });
+  const businessName = options.businessName || "Maracumango \u2014 Granizados & Micheladas";
+  const branchText = options.branchName || "Todas las Sedes (Consolidado)";
+  const now = /* @__PURE__ */ new Date();
+  const generationDateFormatted = now.toLocaleString("es-CO", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit"
+  });
+  const totalOrdersCount = rows.length;
+  const totalSales = rows.reduce((sum, r) => sum + (Number(r.total) || 0), 0);
+  const averageTicket = totalOrdersCount > 0 ? Math.round(totalSales / totalOrdersCount) : 0;
+  const BRAND_DEEP_GREEN = "FF2D6A00";
+  const BRAND_LIGHT_GREEN = "FFE8F3DC";
+  const KPI_BOX_BG = "FFF3F6ED";
+  const ZEBRA_ROW_EVEN = "FFFFFFFF";
+  const ZEBRA_ROW_ODD = "FFF8FAF5";
+  const BORDER_COLOR = "FFE1E4DA";
+  const DARK_TEXT = "FF1A1C19";
+  const MUTED_TEXT = "FF555A50";
+  const subtleBorder = {
+    top: { style: "thin", color: { argb: BORDER_COLOR } },
+    bottom: { style: "thin", color: { argb: BORDER_COLOR } },
+    left: { style: "thin", color: { argb: BORDER_COLOR } },
+    right: { style: "thin", color: { argb: BORDER_COLOR } }
+  };
+  worksheet.getRow(1).height = 10;
+  worksheet.mergeCells("A2:O2");
+  const titleCell = worksheet.getCell("A2");
+  titleCell.value = `REPORTE DE VENTAS \u2014 ${businessName.toUpperCase()}`;
+  titleCell.font = { name: "Segoe UI", size: 14, bold: true, color: { argb: "FFFFFFFF" } };
+  titleCell.fill = {
+    type: "pattern",
+    pattern: "solid",
+    fgColor: { argb: BRAND_DEEP_GREEN }
+  };
+  titleCell.alignment = { horizontal: "center", vertical: "middle" };
+  worksheet.getRow(2).height = 36;
+  worksheet.mergeCells("A3:O3");
+  const metaCell = worksheet.getCell("A3");
+  metaCell.value = `Sede: ${branchText}  |  Fecha de Generaci\xF3n: ${generationDateFormatted}  |  Moneda: COP ($)`;
+  metaCell.font = { name: "Segoe UI", size: 9.5, italic: true, color: { argb: DARK_TEXT } };
+  metaCell.fill = {
+    type: "pattern",
+    pattern: "solid",
+    fgColor: { argb: BRAND_LIGHT_GREEN }
+  };
+  metaCell.alignment = { horizontal: "center", vertical: "middle" };
+  worksheet.getRow(3).height = 22;
+  worksheet.getRow(4).height = 12;
+  worksheet.mergeCells("B5:D5");
+  const kpiLabel1 = worksheet.getCell("B5");
+  kpiLabel1.value = "CANTIDAD TOTAL DE PEDIDOS";
+  kpiLabel1.font = { name: "Segoe UI", size: 8.5, bold: true, color: { argb: MUTED_TEXT } };
+  kpiLabel1.fill = { type: "pattern", pattern: "solid", fgColor: { argb: KPI_BOX_BG } };
+  kpiLabel1.alignment = { horizontal: "center", vertical: "middle" };
+  worksheet.mergeCells("B6:D6");
+  const kpiVal1 = worksheet.getCell("B6");
+  kpiVal1.value = totalOrdersCount;
+  kpiVal1.font = { name: "Segoe UI", size: 16, bold: true, color: { argb: BRAND_DEEP_GREEN } };
+  kpiVal1.fill = { type: "pattern", pattern: "solid", fgColor: { argb: KPI_BOX_BG } };
+  kpiVal1.alignment = { horizontal: "center", vertical: "middle" };
+  kpiVal1.numFmt = "#,##0";
+  worksheet.mergeCells("F5:I5");
+  const kpiLabel2 = worksheet.getCell("F5");
+  kpiLabel2.value = "TOTAL VENTAS REGISTRADAS (COP)";
+  kpiLabel2.font = { name: "Segoe UI", size: 8.5, bold: true, color: { argb: MUTED_TEXT } };
+  kpiLabel2.fill = { type: "pattern", pattern: "solid", fgColor: { argb: KPI_BOX_BG } };
+  kpiLabel2.alignment = { horizontal: "center", vertical: "middle" };
+  worksheet.mergeCells("F6:I6");
+  const kpiVal2 = worksheet.getCell("F6");
+  kpiVal2.value = totalSales;
+  kpiVal2.font = { name: "Segoe UI", size: 16, bold: true, color: { argb: BRAND_DEEP_GREEN } };
+  kpiVal2.fill = { type: "pattern", pattern: "solid", fgColor: { argb: KPI_BOX_BG } };
+  kpiVal2.alignment = { horizontal: "center", vertical: "middle" };
+  kpiVal2.numFmt = '"$"#,##0';
+  worksheet.mergeCells("K5:N5");
+  const kpiLabel3 = worksheet.getCell("K5");
+  kpiLabel3.value = "PROMEDIO DE VENTA POR PEDIDO";
+  kpiLabel3.font = { name: "Segoe UI", size: 8.5, bold: true, color: { argb: MUTED_TEXT } };
+  kpiLabel3.fill = { type: "pattern", pattern: "solid", fgColor: { argb: KPI_BOX_BG } };
+  kpiLabel3.alignment = { horizontal: "center", vertical: "middle" };
+  worksheet.mergeCells("K6:N6");
+  const kpiVal3 = worksheet.getCell("K6");
+  kpiVal3.value = averageTicket;
+  kpiVal3.font = { name: "Segoe UI", size: 16, bold: true, color: { argb: BRAND_DEEP_GREEN } };
+  kpiVal3.fill = { type: "pattern", pattern: "solid", fgColor: { argb: KPI_BOX_BG } };
+  kpiVal3.alignment = { horizontal: "center", vertical: "middle" };
+  kpiVal3.numFmt = '"$"#,##0';
+  const borderCols = [
+    ["B", "C", "D"],
+    ["F", "G", "H", "I"],
+    ["K", "L", "M", "N"]
+  ];
+  borderCols.forEach((colGroup) => {
+    colGroup.forEach((col) => {
+      worksheet.getCell(`${col}5`).border = subtleBorder;
+      worksheet.getCell(`${col}6`).border = subtleBorder;
+    });
+  });
+  worksheet.getRow(5).height = 18;
+  worksheet.getRow(6).height = 28;
+  worksheet.getRow(7).height = 12;
+  const headers = [
+    "N\xFAmero Pedido",
+    "Fecha y Hora",
+    "Sede Operativa",
+    "Cliente",
+    "Tel\xE9fono",
+    "Tipo Entrega",
+    "Direcci\xF3n",
+    "M\xE9todo Pago",
+    "Subtotal (COP)",
+    "Tarifa Domicilio (COP)",
+    "Total (COP)",
+    "Estado",
+    "Aprobado Por",
+    "Preparado Por",
+    "Detalle de Productos"
+  ];
+  const headerRow = worksheet.getRow(8);
+  headerRow.height = 30;
+  headers.forEach((h, idx) => {
+    const colNumber = idx + 1;
+    const cell = headerRow.getCell(colNumber);
+    cell.value = h;
+    cell.font = { name: "Segoe UI", size: 10, bold: true, color: { argb: "FFFFFFFF" } };
+    cell.fill = {
+      type: "pattern",
+      pattern: "solid",
+      fgColor: { argb: BRAND_DEEP_GREEN }
+    };
+    cell.alignment = {
+      horizontal: [9, 10, 11].includes(colNumber) ? "right" : "center",
+      vertical: "middle",
+      wrapText: false
+    };
+    cell.border = {
+      top: { style: "medium", color: { argb: BRAND_DEEP_GREEN } },
+      bottom: { style: "medium", color: { argb: BRAND_DEEP_GREEN } },
+      left: { style: "thin", color: { argb: "FFFFFFFF" } },
+      right: { style: "thin", color: { argb: "FFFFFFFF" } }
+    };
+  });
+  worksheet.autoFilter = "A8:O8";
+  let currentRowIndex = 9;
+  for (const r of rows) {
+    const row = worksheet.getRow(currentRowIndex);
+    const isOdd = (currentRowIndex - 9) % 2 === 1;
+    const rowFillColor = isOdd ? ZEBRA_ROW_ODD : ZEBRA_ROW_EVEN;
+    let dateStr = "\u2014";
+    if (r.createdAt) {
+      const d = new Date(r.createdAt);
+      if (!isNaN(d.getTime())) {
+        dateStr = d.toLocaleString("es-CO", {
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit"
+        });
+      }
+    }
+    const phoneStr = r.customerPhone ? String(r.customerPhone).trim() : "\u2014";
+    row.getCell(1).value = r.orderNumber || "\u2014";
+    row.getCell(2).value = dateStr;
+    row.getCell(3).value = r.sede || "Principal";
+    row.getCell(4).value = r.customerName || "Cliente";
+    row.getCell(5).value = phoneStr;
+    row.getCell(6).value = r.deliveryMethod === "domicilio" ? "Domicilio" : "Recoger en Tienda";
+    row.getCell(7).value = r.deliveryAddress || "En tienda";
+    row.getCell(8).value = (r.paymentMethod || "Efectivo").toUpperCase();
+    row.getCell(9).value = Number(r.subtotal) || 0;
+    row.getCell(10).value = Number(r.deliveryFee) || 0;
+    row.getCell(11).value = Number(r.total) || 0;
+    row.getCell(12).value = r.status || "Completado";
+    row.getCell(13).value = r.acceptedBy || "\u2014";
+    row.getCell(14).value = r.preparedBy || "\u2014";
+    row.getCell(15).value = r.productsDetail || "\u2014";
+    row.getCell(9).numFmt = '"$"#,##0';
+    row.getCell(10).numFmt = '"$"#,##0';
+    row.getCell(11).numFmt = '"$"#,##0';
+    row.getCell(5).numFmt = "@";
+    row.getCell(1).alignment = { horizontal: "center", vertical: "middle" };
+    row.getCell(1).font = { name: "Segoe UI", size: 9.5, bold: true, color: { argb: BRAND_DEEP_GREEN } };
+    row.getCell(2).alignment = { horizontal: "center", vertical: "middle" };
+    row.getCell(3).alignment = { horizontal: "left", vertical: "middle" };
+    row.getCell(4).alignment = { horizontal: "left", vertical: "middle" };
+    row.getCell(4).font = { name: "Segoe UI", size: 9.5, bold: true, color: { argb: DARK_TEXT } };
+    row.getCell(5).alignment = { horizontal: "center", vertical: "middle" };
+    row.getCell(6).alignment = { horizontal: "center", vertical: "middle" };
+    row.getCell(7).alignment = { horizontal: "left", vertical: "middle", wrapText: true };
+    row.getCell(8).alignment = { horizontal: "center", vertical: "middle" };
+    row.getCell(9).alignment = { horizontal: "right", vertical: "middle" };
+    row.getCell(10).alignment = { horizontal: "right", vertical: "middle" };
+    row.getCell(11).alignment = { horizontal: "right", vertical: "middle" };
+    row.getCell(11).font = { name: "Segoe UI", size: 9.5, bold: true, color: { argb: BRAND_DEEP_GREEN } };
+    row.getCell(12).alignment = { horizontal: "center", vertical: "middle" };
+    row.getCell(13).alignment = { horizontal: "center", vertical: "middle" };
+    row.getCell(14).alignment = { horizontal: "center", vertical: "middle" };
+    row.getCell(15).alignment = { horizontal: "left", vertical: "middle", wrapText: true };
+    for (let c = 1; c <= 15; c++) {
+      const cell = row.getCell(c);
+      if (!cell.font) {
+        cell.font = { name: "Segoe UI", size: 9.5, color: { argb: DARK_TEXT } };
+      }
+      cell.fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: rowFillColor }
+      };
+      cell.border = subtleBorder;
+    }
+    row.height = 24;
+    currentRowIndex++;
+  }
+  const totalRowIndex = currentRowIndex;
+  const totalRow = worksheet.getRow(totalRowIndex);
+  worksheet.mergeCells(`A${totalRowIndex}:H${totalRowIndex}`);
+  const summaryLabel = totalRow.getCell(1);
+  summaryLabel.value = `TOTAL GENERAL (${totalOrdersCount} PEDIDOS CONSOLIDADOS)`;
+  summaryLabel.font = { name: "Segoe UI", size: 10, bold: true, color: { argb: BRAND_DEEP_GREEN } };
+  summaryLabel.alignment = { horizontal: "right", vertical: "middle" };
+  const startRow = 9;
+  const endRow = totalRowIndex - 1;
+  if (rows.length > 0) {
+    totalRow.getCell(9).value = { formula: `SUM(I${startRow}:I${endRow})` };
+    totalRow.getCell(10).value = { formula: `SUM(J${startRow}:J${endRow})` };
+    totalRow.getCell(11).value = { formula: `SUM(K${startRow}:K${endRow})` };
+  } else {
+    totalRow.getCell(9).value = 0;
+    totalRow.getCell(10).value = 0;
+    totalRow.getCell(11).value = 0;
+  }
+  totalRow.getCell(9).numFmt = '"$"#,##0';
+  totalRow.getCell(10).numFmt = '"$"#,##0';
+  totalRow.getCell(11).numFmt = '"$"#,##0';
+  totalRow.getCell(9).alignment = { horizontal: "right", vertical: "middle" };
+  totalRow.getCell(10).alignment = { horizontal: "right", vertical: "middle" };
+  totalRow.getCell(11).alignment = { horizontal: "right", vertical: "middle" };
+  totalRow.getCell(9).font = { name: "Segoe UI", size: 10, bold: true, color: { argb: DARK_TEXT } };
+  totalRow.getCell(10).font = { name: "Segoe UI", size: 10, bold: true, color: { argb: DARK_TEXT } };
+  totalRow.getCell(11).font = { name: "Segoe UI", size: 11, bold: true, color: { argb: BRAND_DEEP_GREEN } };
+  for (let c = 1; c <= 15; c++) {
+    const cell = totalRow.getCell(c);
+    cell.fill = {
+      type: "pattern",
+      pattern: "solid",
+      fgColor: { argb: BRAND_LIGHT_GREEN }
+    };
+    cell.border = {
+      top: { style: "thin", color: { argb: BRAND_DEEP_GREEN } },
+      bottom: { style: "double", color: { argb: BRAND_DEEP_GREEN } },
+      left: { style: "thin", color: { argb: BORDER_COLOR } },
+      right: { style: "thin", color: { argb: BORDER_COLOR } }
+    };
+  }
+  totalRow.height = 26;
+  const defaultWidths = [
+    16,
+    // 1: N° Pedido
+    18,
+    // 2: Fecha y Hora
+    22,
+    // 3: Sede
+    24,
+    // 4: Cliente
+    16,
+    // 5: Teléfono
+    18,
+    // 6: Tipo Entrega
+    30,
+    // 7: Dirección
+    16,
+    // 8: Método Pago
+    16,
+    // 9: Subtotal
+    18,
+    // 10: Domicilio
+    18,
+    // 11: Total
+    16,
+    // 12: Estado
+    20,
+    // 13: Aprobado Por
+    20,
+    // 14: Preparado Por
+    40
+    // 15: Detalle Productos
+  ];
+  defaultWidths.forEach((width, idx) => {
+    const col = worksheet.getColumn(idx + 1);
+    col.width = width;
+  });
+  const buffer = await workbook.xlsx.writeBuffer();
+  return Buffer.from(buffer);
+};
+
+// server/routes/orders.ts
 var router5 = Router5();
 var devFallbackOrders = [...INITIAL_ORDERS];
 router5.get("/", async (req, res) => {
@@ -1553,8 +1874,113 @@ var handleExportCsv = async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 };
+var handleExportExcel = async (req, res) => {
+  const branchFilter = req.query.branchId;
+  if (!isDatabaseConfigured()) {
+    const reportRows = devFallbackOrders.filter((o) => o.status !== "CANCELLED" && o.status !== "Cancelado").map((r) => ({
+      orderNumber: r.orderNumber || `#MMC-${r.id || "00"}`,
+      createdAt: r.createdAt || /* @__PURE__ */ new Date(),
+      sede: r.sedeNombre || "Sede Principal",
+      customerName: r.customerName || "Cliente",
+      customerPhone: r.customerPhone || "\u2014",
+      deliveryMethod: r.deliveryMethod || "recoger",
+      deliveryAddress: r.deliveryAddress || "En tienda",
+      paymentMethod: r.paymentMethod || "Efectivo",
+      subtotal: Number(r.subtotal) || 0,
+      deliveryFee: Number(r.deliveryFee) || 0,
+      total: Number(r.total) || 0,
+      status: r.status || "Completado",
+      acceptedBy: r.acceptedBy || "N/A",
+      preparedBy: r.preparedByName || "N/A",
+      productsDetail: (r.items || []).map((it) => `${it.productName} (${it.quantity}x)`).join(", ") || "Sin items"
+    }));
+    const buffer = await generateSalesReportExcel(reportRows, {
+      businessName: "Maracumango \u2014 Granizados & Micheladas Artesanales",
+      branchName: branchFilter && branchFilter !== "all" ? branchFilter : "Todas las Sedes (Consolidado)",
+      generatedBy: req.user ? `${req.user.firstName || ""} ${req.user.lastName || ""}`.trim() : "Administrador"
+    });
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="reporte_ventas_maracumango_${Date.now()}.xlsx"`
+    );
+    return res.send(buffer);
+  }
+  try {
+    let sql = `
+      SELECT 
+        o.order_number AS "orderNumber",
+        o.created_at AS "createdAt",
+        b.name AS sede,
+        o.customer_name AS "customerName",
+        o.customer_phone AS "customerPhone",
+        o.delivery_method AS "deliveryMethod",
+        COALESCE(o.delivery_address, 'En tienda') AS "deliveryAddress",
+        o.payment_method AS "paymentMethod",
+        o.subtotal::float AS subtotal,
+        o.delivery_fee::float AS "deliveryFee",
+        o.total::float AS total,
+        os.label AS status,
+        COALESCE(u_acc.first_name || ' ' || COALESCE(u_acc.last_name, ''), 'N/A') AS "acceptedBy",
+        COALESCE(o.prepared_by_name, 'N/A') AS "preparedBy",
+        COALESCE(
+          string_agg(oi.product_name || ' (' || oi.quantity || 'x)', ', '), 'Sin items'
+        ) AS "productsDetail"
+      FROM orders o
+      JOIN branches b ON b.id = o.branch_id
+      JOIN order_statuses os ON os.id = o.status_id
+      LEFT JOIN order_items oi ON oi.order_id = o.id
+      LEFT JOIN users u_acc ON u_acc.id = o.accepted_by
+      WHERE o.status_id NOT IN ('CANCELLED', 'Cancelado')
+    `;
+    const params = [];
+    if (branchFilter && branchFilter !== "all") {
+      params.push(branchFilter);
+      sql += ` AND o.branch_id = $1`;
+    }
+    sql += `
+      GROUP BY o.id, b.name, os.label, u_acc.first_name, u_acc.last_name
+      ORDER BY o.created_at DESC
+    `;
+    const result = await query(sql, params);
+    const reportRows = result.rows.map((r) => ({
+      orderNumber: r.orderNumber,
+      createdAt: r.createdAt,
+      sede: r.sede,
+      customerName: r.customerName,
+      customerPhone: r.customerPhone,
+      deliveryMethod: r.deliveryMethod,
+      deliveryAddress: r.deliveryAddress,
+      paymentMethod: r.paymentMethod,
+      subtotal: Number(r.subtotal) || 0,
+      deliveryFee: Number(r.deliveryFee) || 0,
+      total: Number(r.total) || 0,
+      status: r.status,
+      acceptedBy: r.acceptedBy,
+      preparedBy: r.preparedBy,
+      productsDetail: r.productsDetail
+    }));
+    const buffer = await generateSalesReportExcel(reportRows, {
+      businessName: "Maracumango \u2014 Granizados & Micheladas Artesanales",
+      branchName: branchFilter && branchFilter !== "all" && reportRows[0] ? reportRows[0].sede : "Todas las Sedes (Consolidado)",
+      generatedBy: req.user ? `${req.user.firstName || ""} ${req.user.lastName || ""}`.trim() : "Administrador"
+    });
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="reporte_ventas_maracumango_${Date.now()}.xlsx"`
+    );
+    res.send(buffer);
+  } catch (error) {
+    console.error("Error generating Excel export:", error.message);
+    res.status(500).json({ error: error.message });
+  }
+};
 router5.get("/export-csv", requireAdmin, handleExportCsv);
 router5.get("/export/csv", requireAdmin, handleExportCsv);
+router5.get("/export-excel", requireAdmin, handleExportExcel);
+router5.get("/export/excel", requireAdmin, handleExportExcel);
+router5.get("/export-xlsx", requireAdmin, handleExportExcel);
 router5.post("/", validateCustomerOrder, async (req, res) => {
   if (!req.user) {
     return res.status(401).json({

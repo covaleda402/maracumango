@@ -470,6 +470,22 @@ async function startSuite() {
       }
     }, baseUrl);
 
+    await runTest('Administrador', '4.11 Administrador exporta reporte de ventas en formato Excel (.xlsx) con diseño y KPIs profesionales', async (url) => {
+      const res = await fetch(`${url}/orders/export/excel`, {
+        headers: { Authorization: `Bearer ${adminToken}` },
+      });
+
+      if (!res.ok) throw new Error(`Fallo exportando Excel: ${res.status}`);
+      const contentType = res.headers.get('content-type') || '';
+      if (!contentType.includes('spreadsheetml.sheet')) {
+        throw new Error(`Content-Type esperado spreadsheetml.sheet, se obtuvo: ${contentType}`);
+      }
+      const arrayBuffer = await res.arrayBuffer();
+      if (arrayBuffer.byteLength < 5000) {
+        throw new Error(`Tamaño de archivo Excel inesperadamente pequeño: ${arrayBuffer.byteLength} bytes`);
+      }
+    }, baseUrl);
+
     // ====================================================================
     // SUITE 5: VERIFICACIÓN DE FUNCIONALIDADES EXISTENTES (CATÁLOGO Y PERSONAL)
     // ====================================================================

@@ -26,7 +26,8 @@ export const AdminDashboardPage: React.FC = () => {
     setAdminSedeId,
     currentUser,
     logout,
-    downloadSalesReport,
+    downloadSalesReportCsv,
+    downloadSalesReportExcel,
   } = useApp();
 
   const [activeAdminSubtab, setActiveAdminSubtab] = useState<
@@ -39,6 +40,7 @@ export const AdminDashboardPage: React.FC = () => {
   const [productCategoryFilter, setProductCategoryFilter] = useState<string>('Todos');
   const [productFeedback, setProductFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [isExportingCsv, setIsExportingCsv] = useState(false);
+  const [isExportingExcel, setIsExportingExcel] = useState(false);
 
   // Status Normalization Helpers (Supports both Postgres ENUM IDs, Labels, and Legacy strings)
   const isPendingAdmin = (order: Order) => {
@@ -135,15 +137,29 @@ export const AdminDashboardPage: React.FC = () => {
     }
   };
 
+  const handleDownloadExcel = async () => {
+    setIsExportingExcel(true);
+    try {
+      const ok = await downloadSalesReportExcel(adminSedeId);
+      if (!ok) {
+        alert('No se pudo generar el reporte Excel en este momento.');
+      }
+    } catch {
+      alert('Error al descargar el archivo Excel.');
+    } finally {
+      setIsExportingExcel(false);
+    }
+  };
+
   const handleDownloadCsv = async () => {
     setIsExportingCsv(true);
     try {
-      const ok = await downloadSalesReport(adminSedeId);
+      const ok = await downloadSalesReportCsv(adminSedeId);
       if (!ok) {
-        alert('No se pudo generar el reporte en este momento.');
+        alert('No se pudo generar el reporte CSV en este momento.');
       }
     } catch {
-      alert('Error al descargar el archivo.');
+      alert('Error al descargar el archivo CSV.');
     } finally {
       setIsExportingCsv(false);
     }
@@ -832,15 +848,27 @@ export const AdminDashboardPage: React.FC = () => {
                     </p>
                   </div>
                 </div>
-                <button
-                  onClick={handleDownloadCsv}
-                  disabled={isExportingCsv}
-                  className="shrink-0 px-4 py-2 rounded-xl bg-surface-container-high hover:bg-surface-container-highest text-on-surface text-xs font-bold border border-outline-variant/30 flex items-center gap-2 transition-all shadow-sm active:scale-95 disabled:opacity-50"
-                  title="Descargar reporte completo en formato CSV para Excel"
-                >
-                  <span className="material-symbols-outlined text-[18px] text-primary">download</span>
-                  <span>{isExportingCsv ? 'Generando...' : 'Descargar Reporte CSV'}</span>
-                </button>
+                <div className="flex items-center gap-2 flex-wrap shrink-0">
+                  <button
+                    onClick={handleDownloadExcel}
+                    disabled={isExportingExcel}
+                    className="px-4 py-2 rounded-xl bg-primary-container hover:bg-primary text-on-primary text-xs font-bold flex items-center gap-2 transition-all shadow-sm active:scale-95 disabled:opacity-50"
+                    title="Descargar reporte profesional formateado en Excel (.xlsx)"
+                  >
+                    <span className="material-symbols-outlined text-[18px]">table_view</span>
+                    <span>{isExportingExcel ? 'Generando Excel...' : 'Descargar Excel (.xlsx)'}</span>
+                  </button>
+
+                  <button
+                    onClick={handleDownloadCsv}
+                    disabled={isExportingCsv}
+                    className="px-3.5 py-2 rounded-xl bg-surface-container-high hover:bg-surface-container-highest text-on-surface text-xs font-semibold border border-outline-variant/30 flex items-center gap-1.5 transition-all shadow-xs active:scale-95 disabled:opacity-50"
+                    title="Descargar reporte plano en formato CSV"
+                  >
+                    <span className="material-symbols-outlined text-[17px] text-on-surface-variant">download</span>
+                    <span>{isExportingCsv ? 'Generando...' : 'Descargar CSV'}</span>
+                  </button>
+                </div>
               </div>
 
               {/* Top Search and Controls */}

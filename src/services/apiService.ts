@@ -412,6 +412,36 @@ export const apiService = {
     }
   },
 
+  async downloadSalesReportExcel(branchId?: string): Promise<boolean> {
+    try {
+      const url = branchId && branchId !== 'all'
+        ? `${BASE_URL}/orders/export-excel?branchId=${branchId}`
+        : `${BASE_URL}/orders/export-excel`;
+
+      const res = await fetch(url, {
+        headers: getHeaders('admin'),
+      });
+
+      if (!res.ok) {
+        throw new Error('Error al generar el reporte Excel.');
+      }
+
+      const blob = await res.blob();
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = downloadUrl;
+      a.download = `reporte_ventas_maracumango_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(downloadUrl);
+      return true;
+    } catch (e) {
+      console.error('Error downloading Excel:', e);
+      return false;
+    }
+  },
+
   async updateOrderStatus(orderId: string, status: OrderStatus, role: string = 'admin', branchId?: string): Promise<boolean> {
     try {
       const res = await fetch(`${BASE_URL}/orders/${orderId}/status`, {

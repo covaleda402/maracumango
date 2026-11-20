@@ -3,6 +3,7 @@ import { query, getClient, isDatabaseConfigured } from '../db';
 import { validateCustomerOrder } from '../middleware/validate';
 import { requireAdmin, requireWorkerOrAdmin } from '../middleware/auth';
 import { INITIAL_ORDERS } from '../../src/data/mockData';
+import { generateSalesReportExcel, type OrderReportRow } from '../services/excelReportService';
 
 const router = Router();
 
@@ -262,8 +263,127 @@ const handleExportCsv = async (req: Request, res: Response) => {
   }
 };
 
+// Handlers for Excel (.xlsx) export (Supports /export-excel, /export/excel, and /export-xlsx)
+const handleExportExcel = async (req: Request, res: Response) => {
+  const branchFilter = req.query.branchId as string;
+
+  if (!isDatabaseConfigured()) {
+    const reportRows: OrderReportRow[] = devFallbackOrders
+      .filter((o) => (o.status as string) !== 'CANCELLED' && (o.status as string) !== 'Cancelado')
+      .map((r) => ({
+        orderNumber: r.orderNumber || `#MMC-${r.id || '00'}`,
+        createdAt: r.createdAt || new Date(),
+        sede: r.sedeNombre || 'Sede Principal',
+        customerName: r.customerName || 'Cliente',
+        customerPhone: r.customerPhone || '—',
+        deliveryMethod: r.deliveryMethod || 'recoger',
+        deliveryAddress: r.deliveryAddress || 'En tienda',
+        paymentMethod: r.paymentMethod || 'Efectivo',
+        subtotal: Number(r.subtotal) || 0,
+        deliveryFee: Number(r.deliveryFee) || 0,
+        total: Number(r.total) || 0,
+        status: r.status || 'Completado',
+        acceptedBy: r.acceptedBy || 'N/A',
+        preparedBy: r.preparedByName || 'N/A',
+        productsDetail:
+          (r.items || []).map((it: any) => `${it.productName} (${it.quantity}x)`).join(', ') || 'Sin items',
+      }));
+
+    const buffer = await generateSalesReportExcel(reportRows, {
+      businessName: 'Maracumango — Granizados & Micheladas Artesanales',
+      branchName: branchFilter && branchFilter !== 'all' ? branchFilter : 'Todas las Sedes (Consolidado)',
+      generatedBy: req.user ? `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim() : 'Administrador',
+    });
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="reporte_ventas_maracumango_${Date.now()}.xlsx"`
+    );
+    return res.send(buffer);
+  }
+
+  try {
+    let sql = `
+      SELECT 
+        o.order_number AS "orderNumber",
+        o.created_at AS "createdAt",
+        b.name AS sede,
+        o.customer_name AS "customerName",
+        o.customer_phone AS "customerPhone",
+        o.delivery_method AS "deliveryMethod",
+        COALESCE(o.delivery_address, 'En tienda') AS "deliveryAddress",
+        o.payment_method AS "paymentMethod",
+        o.subtotal::float AS subtotal,
+        o.delivery_fee::float AS "deliveryFee",
+        o.total::float AS total,
+        os.label AS status,
+        COALESCE(u_acc.first_name || ' ' || COALESCE(u_acc.last_name, ''), 'N/A') AS "acceptedBy",
+        COALESCE(o.prepared_by_name, 'N/A') AS "preparedBy",
+        COALESCE(
+          string_agg(oi.product_name || ' (' || oi.quantity || 'x)', ', '), 'Sin items'
+        ) AS "productsDetail"
+      FROM orders o
+      JOIN branches b ON b.id = o.branch_id
+      JOIN order_statuses os ON os.id = o.status_id
+      LEFT JOIN order_items oi ON oi.order_id = o.id
+      LEFT JOIN users u_acc ON u_acc.id = o.accepted_by
+      WHERE o.status_id NOT IN ('CANCELLED', 'Cancelado')
+    `;
+
+    const params: any[] = [];
+    if (branchFilter && branchFilter !== 'all') {
+      params.push(branchFilter);
+      sql += ` AND o.branch_id = $1`;
+    }
+
+    sql += `
+      GROUP BY o.id, b.name, os.label, u_acc.first_name, u_acc.last_name
+      ORDER BY o.created_at DESC
+    `;
+
+    const result = await query(sql, params);
+    const reportRows: OrderReportRow[] = result.rows.map((r: any) => ({
+      orderNumber: r.orderNumber,
+      createdAt: r.createdAt,
+      sede: r.sede,
+      customerName: r.customerName,
+      customerPhone: r.customerPhone,
+      deliveryMethod: r.deliveryMethod,
+      deliveryAddress: r.deliveryAddress,
+      paymentMethod: r.paymentMethod,
+      subtotal: Number(r.subtotal) || 0,
+      deliveryFee: Number(r.deliveryFee) || 0,
+      total: Number(r.total) || 0,
+      status: r.status,
+      acceptedBy: r.acceptedBy,
+      preparedBy: r.preparedBy,
+      productsDetail: r.productsDetail,
+    }));
+
+    const buffer = await generateSalesReportExcel(reportRows, {
+      businessName: 'Maracumango — Granizados & Micheladas Artesanales',
+      branchName: branchFilter && branchFilter !== 'all' && reportRows[0] ? reportRows[0].sede : 'Todas las Sedes (Consolidado)',
+      generatedBy: req.user ? `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim() : 'Administrador',
+    });
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="reporte_ventas_maracumango_${Date.now()}.xlsx"`
+    );
+    res.send(buffer);
+  } catch (error: any) {
+    console.error('Error generating Excel export:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+};
+
 router.get('/export-csv', requireAdmin, handleExportCsv);
 router.get('/export/csv', requireAdmin, handleExportCsv);
+router.get('/export-excel', requireAdmin, handleExportExcel);
+router.get('/export/excel', requireAdmin, handleExportExcel);
+router.get('/export-xlsx', requireAdmin, handleExportExcel);
 
 // POST /api/orders — Customer creates a new order (status starts in PENDING_ADMIN, requires login)
 router.post('/', validateCustomerOrder, async (req: Request, res: Response) => {

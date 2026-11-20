@@ -90,6 +90,8 @@ interface AppContextType {
   cancelOrder: (orderId: string, reason?: string) => Promise<boolean>;
   startPreparation: (orderId: string) => Promise<{ success: boolean; error?: string; message?: string }>;
   downloadSalesReport: (branchId?: string) => Promise<boolean>;
+  downloadSalesReportCsv: (branchId?: string) => Promise<boolean>;
+  downloadSalesReportExcel: (branchId?: string) => Promise<boolean>;
   updateOrderStatus: (orderId: string, status: OrderStatus) => Promise<void>;
   addProduct: (productData: Omit<Product, 'id'>) => Promise<void>;
   updateProduct: (product: Product) => Promise<void>;
@@ -312,7 +314,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const downloadSalesReport = async (branchId?: string) => {
+    return await apiService.downloadSalesReportExcel(branchId || adminSedeId);
+  };
+
+  const downloadSalesReportCsv = async (branchId?: string) => {
     return await apiService.downloadSalesReportCsv(branchId || adminSedeId);
+  };
+
+  const downloadSalesReportExcel = async (branchId?: string) => {
+    return await apiService.downloadSalesReportExcel(branchId || adminSedeId);
   };
 
   const updateOrderStatus = async (orderId: string, status: OrderStatus) => {
@@ -550,6 +560,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         cancelOrder,
         startPreparation,
         downloadSalesReport,
+        downloadSalesReportCsv,
+        downloadSalesReportExcel,
         updateOrderStatus,
         addProduct,
         updateProduct,
