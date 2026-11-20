@@ -112,14 +112,15 @@ Para garantizar la entrega puntual de tus domicilios y evitar pedidos no verific
 - **Filtro de seguridad:** Los pedidos recién realizados por clientes permanecen en estado `Pendiente de Aprobación Admin` y **no aparecerán en tu cola** hasta que la administración central confirme la viabilidad del pedido.
 - Tan pronto el administrador aprueba una orden, esta entra a tu panel con estado **"Aceptado"**.
 
-### 3.3 Ciclo Operativo de Preparación
+### 3.3 Ciclo Operativo de Preparación y Exclusividad de Barra
 Cada tarjeta de pedido muestra la lista de productos, adiciones personalizadas, notas del cliente y tiempo transcurrido:
 
 1. **Tomar Pedido (`En Preparación`):**
    - Presiona el botón **"Tomar e Iniciar Preparación"**.
-   - El pedido queda asignado a tu nombre, garantizando que otro compañero no prepare la misma comanda de forma duplicada.
+   - **Exclusividad Operativa:** El pedido queda asignado a tu nombre. A los demás compañeros de tu sede les aparecerá una etiqueta informativa con candado: *"En preparación por: [Tu Nombre] (Exclusivo)"* y su botón de finalización estará **bloqueado**, garantizando que nadie marque como listo por error un pedido que tú estás elaborando.
+   - **Filtro "Mis Preparaciones":** Puedes usar la pestaña de filtro rápido *"Mis Preparaciones"* en la barra superior para ver exclusivamente las comandas que tienes en tus manos en ese instante.
 2. **Marcar como Listo (`Listo para Entrega`):**
-   - Al finalizar el armado del granizado, michelada o postre, haz clic en **"Marcar como Listo"**.
+   - Al finalizar el armado del granizado, michelada o postre, haz clic en **"Marcar como Listo"** (habilitado únicamente para ti).
    - La orden pasa a la zona de despacho o al domiciliario.
 3. **Entregar Pedido (`Entregado`):**
    - Una vez el cliente o domiciliario retira el pedido, presiona **"Marcar como Entregado"**.
@@ -137,16 +138,23 @@ Cada tarjeta de pedido muestra la lista de productos, adiciones personalizadas, 
 1. Ingresa mediante el portal de acceso con el correo de Administrador General y tu contraseña maestra.
 2. Se activará la barra superior con acceso directo al **Panel de Control (Dashboard)**, **Configuración de Sedes**, **Catálogo**, **Personal** y **Reportes**.
 
-### 4.2 Aprobación y Control de Pedidos
+### 4.2 Aprobación y Usabilidad Intuitiva de Pedidos
 - En la pestaña de órdenes, el Administrador puede supervisar los pedidos de todas las sedes o filtrar por una sede específica.
-- **Aprobación en 1 clic:** Todo nuevo pedido generado por clientes ingresa en estado `PENDING_ADMIN`. Con solo presionar el botón **"Aprobar"**, la comanda viaja inmediatamente a la pantalla del trabajador en la sede correspondiente.
-- **Cancelación:** En caso de requerirse, el administrador puede cancelar un pedido indicando el motivo correspondiente.
+- **Pestaña de Alerta Rápida (`🔥 POR APROBAR`):** Si hay órdenes recién creadas por clientes, la pestaña se ilumina de forma destacada mostrando el conteo exacto pendiente de revisión.
+- **Acción Inmediata en 1 Clic:** Se eliminaron menús desplegables confusos. Cada fila cuenta con botones claros de acción directa:
+  - Botón verde esmeralda **"✓ Aprobar Pedido"**: Aprueba la orden inmediatamente y la envía a la pantalla del trabajador en la sede correspondiente.
+  - Botón rojo suave **"Rechazar"**: Permite cancelar la solicitud confirmando la acción de forma segura.
+- **Seguimiento Visual en Tiempo Real:** Las órdenes en curso muestran badges claros:
+  - `Aprobado (Esperando Barra)` (azul)
+  - `En Preparación (por Nombre)` (púrpura con indicador giratorio)
+  - `Listo para Entrega` (verde con botón directo de 1 clic para **"Entregar"**)
+  - `Entregado` (gris con doble check)
 
-### 4.3 Gestión Multi-Sede (`+ Nueva Sede`)
+### 4.3 Gestión Multi-Sede y Eliminación Definitiva (`+ Nueva Sede`)
 El sistema permite expandir la presencia de Maracumango agregando nuevas sucursales en Neiva:
 
 1. Ingresa a la sección **"Configuración de Sedes"**.
-2. Haz clic en el botón verde **"+ Nueva Sede"**.
+2. Haz clic en el botón naranja **"+ Nueva Sede"**.
 3. Diligencia los campos requeridos:
    - **Nombre de la Sede** (ej. *Sede Barrio Las Granjas*)
    - **Dirección física** (ej. *Carrera 5 # 28-12, Neiva*)
@@ -155,15 +163,16 @@ El sistema permite expandir la presencia de Maracumango agregando nuevas sucursa
    - **Horario de atención** (ej. *Lunes a Domingo 2:00 PM - 10:00 PM*)
 4. Presiona **"Crear Sede"**.
 5. De inmediato, la nueva sede estará disponible en el selector de sedes para los clientes en el carrito de compras y en el panel de los trabajadores.
-6. Puedes **editar los datos** o **desactivar/eliminar** sedes en cualquier momento.
+6. **Eliminación Definitiva (Hard Delete):** Para evitar la acumulación de sedes de prueba o inactivas, el botón rojo **"Eliminar Sede Permanentemente"** borra por completo la sede y sus turnos asociados, desvinculando de forma segura los pedidos y usuarios para preservar los reportes financieros sin dejar registros obsoletos en la pantalla.
 
 ### 4.4 Gestión de Catálogo (Productos, Categorías e Insumos)
 - **Crear Producto:** Ingresa nombre, categoría, precio de venta en COP, descripción, imagen y lista de ingredientes base.
 - **Editar / Desactivar:** Si un producto está fuera de temporada, puedes desactivarlo para que no aparezca en el menú del cliente sin necesidad de borrarlo de la base de datos.
 - **Gestión de Ingredientes:** Controla adiciones y opciones personalizables.
 
-### 4.5 Gestión de Personal y Cuentas
-- Desde el módulo de **Colaboradores / Staff**, el Administrador puede dar de alta nuevos trabajadores.
+### 4.5 Gestión de Personal, Roles y Segregación de Cuentas
+- Desde el módulo de **Equipo & Personal**, el Administrador gestiona exclusivamente a los colaboradores y supervisores (`ADMIN` y `WORKER`).
+- **Segregación Estricta:** Las cuentas de clientes (`CUSTOMER`) registradas desde la tienda web están completamente separadas y **nunca** aparecen en esta tabla ni se les asigna rol operativo, garantizando la privacidad y el orden del personal.
 - Asigna a cada trabajador su sede operativa y genera contraseñas seguras.
 - Si un colaborador cambia de sede o deja la empresa, su cuenta puede ser reasignada o desactivada al instante.
 

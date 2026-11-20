@@ -612,7 +612,7 @@ export const AdminDashboardPage: React.FC = () => {
               <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
                 {[
                   { id: 'Todos', label: 'TODOS', count: adminOrders.length },
-                  { id: 'Pendiente', label: 'PENDIENTES', count: countPending },
+                  { id: 'Pendiente', label: countPending > 0 ? '🔥 POR APROBAR' : 'POR APROBAR', count: countPending, highlight: countPending > 0 },
                   { id: 'APROBADOS', label: 'APROBADOS', count: countAprobados },
                   { id: 'EN PREPARACIÓN', label: 'EN PREPARACIÓN', count: countPreparing },
                   { id: 'LISTOS', label: 'LISTOS', count: countReady },
@@ -627,6 +627,8 @@ export const AdminDashboardPage: React.FC = () => {
                       className={`px-3 py-1.5 rounded-xl font-label-md text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 ${
                         isActive
                           ? 'bg-primary-container text-on-primary shadow-sm'
+                          : tab.highlight
+                          ? 'bg-amber-500/15 text-amber-700 border border-amber-500/30 hover:bg-amber-500/25 animate-pulse'
                           : 'bg-surface-container-low text-on-surface-variant hover:bg-surface-container hover:text-on-surface'
                       }`}
                     >
@@ -635,6 +637,8 @@ export const AdminDashboardPage: React.FC = () => {
                         className={`px-1.5 py-0.2 rounded-full text-[10px] ${
                           isActive
                             ? 'bg-white/25 text-white'
+                            : tab.highlight
+                            ? 'bg-amber-500 text-white font-bold'
                             : 'bg-surface-container text-on-surface-variant'
                         }`}
                       >
@@ -725,59 +729,94 @@ export const AdminDashboardPage: React.FC = () => {
                               </td>
                               <td className="p-4">
                                 {order.status === 'PENDING_ADMIN' || order.status === 'Pendiente' ? (
-                                  <div className="flex items-center gap-2">
+                                  <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
                                     <button
                                       onClick={() => acceptOrder(order.id)}
                                       className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-sm transition-all flex items-center gap-1.5 active:scale-95"
                                       title="Confirmar y aprobar pedido para cocina"
                                     >
                                       <span className="material-symbols-outlined text-[16px]">check_circle</span>
-                                      <span>CONFIRMAR PEDIDO</span>
+                                      <span>✓ Aprobar Pedido</span>
                                     </button>
                                     <button
                                       onClick={() => {
-                                        if (confirm(`¿Estás seguro de cancelar el pedido ${order.orderNumber}? Esta acción no se puede deshacer.`)) {
+                                        if (confirm(`¿Estás seguro de cancelar o rechazar el pedido ${order.orderNumber}?`)) {
                                           cancelOrder(order.id);
                                         }
                                       }}
                                       className="px-3 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 text-xs font-bold transition-all flex items-center gap-1 active:scale-95"
-                                      title="Cancelar / Rechazar pedido"
+                                      title="Rechazar pedido"
                                     >
                                       <span className="material-symbols-outlined text-[16px]">cancel</span>
-                                      <span>CANCELAR PEDIDO</span>
+                                      <span>Rechazar</span>
                                     </button>
                                   </div>
                                 ) : (order.status as string) === 'CANCELLED' || (order.status as string) === 'Cancelado' ? (
-                                  <span className="inline-flex items-center gap-1 px-3 py-1 rounded-xl bg-rose-100 text-rose-800 text-xs font-bold border border-rose-300">
+                                  <span className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-rose-100 text-rose-800 text-xs font-bold border border-rose-300">
                                     <span className="material-symbols-outlined text-[14px]">cancel</span>
                                     CANCELADO
                                   </span>
-                                ) : (
+                                ) : (order.status as string) === 'ACCEPTED' || (order.status as string) === 'Aceptado' ? (
                                   <div className="flex items-center gap-2">
-                                    <select
-                                      value={order.status}
-                                      onChange={(e) => updateOrderStatus(order.id, e.target.value as OrderStatus)}
-                                      className={`px-2.5 py-1 rounded-xl text-xs font-bold border focus:outline-none cursor-pointer ${getStatusBadge(
-                                        order.status
-                                      )}`}
-                                    >
-                                      <option value="ACCEPTED">Aceptado</option>
-                                      <option value="En preparación">En preparación</option>
-                                      <option value="Listo">Listo</option>
-                                      <option value="Entregado">Entregado</option>
-                                      <option value="CANCELLED">Cancelado</option>
-                                    </select>
+                                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-500/15 text-blue-700 dark:text-blue-300 text-xs font-bold border border-blue-500/30">
+                                      <span className="material-symbols-outlined text-[15px]">schedule</span>
+                                      <span>Aprobado (Esperando Barra)</span>
+                                    </span>
                                     <button
                                       onClick={() => {
                                         if (confirm(`¿Deseas cancelar el pedido ${order.orderNumber}?`)) {
                                           cancelOrder(order.id);
                                         }
                                       }}
-                                      className="p-1.5 rounded-lg text-rose-600 hover:bg-rose-50 hover:text-rose-800 transition-colors"
+                                      className="p-1.5 rounded-lg text-rose-600 hover:bg-rose-50 transition-colors"
                                       title="Cancelar pedido"
                                     >
                                       <span className="material-symbols-outlined text-[16px]">block</span>
                                     </button>
+                                  </div>
+                                ) : (order.status as string) === 'PREPARING' || (order.status as string) === 'En preparación' ? (
+                                  <div className="flex items-center gap-2">
+                                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-500/15 text-purple-700 dark:text-purple-300 text-xs font-bold border border-purple-500/30">
+                                      <span className="material-symbols-outlined text-[15px] animate-spin">autorenew</span>
+                                      <span>En Preparación {order.preparedByName ? `(${order.preparedByName})` : ''}</span>
+                                    </span>
+                                    <button
+                                      onClick={() => {
+                                        if (confirm(`¿Deseas cancelar el pedido ${order.orderNumber}?`)) {
+                                          cancelOrder(order.id);
+                                        }
+                                      }}
+                                      className="p-1.5 rounded-lg text-rose-600 hover:bg-rose-50 transition-colors"
+                                      title="Cancelar pedido"
+                                    >
+                                      <span className="material-symbols-outlined text-[16px]">block</span>
+                                    </button>
+                                  </div>
+                                ) : (order.status as string) === 'READY' || (order.status as string) === 'Listo' ? (
+                                  <div className="flex items-center gap-2">
+                                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 text-xs font-bold border border-emerald-500/30">
+                                      <span className="material-symbols-outlined text-[15px]">check_circle</span>
+                                      <span>Listo para Entrega</span>
+                                    </span>
+                                    <button
+                                      onClick={() => updateOrderStatus(order.id, 'DELIVERED')}
+                                      className="px-3 py-1.5 rounded-xl bg-primary-container hover:bg-primary text-on-primary text-xs font-bold shadow-sm transition-all flex items-center gap-1 active:scale-95"
+                                      title="Marcar pedido como entregado"
+                                    >
+                                      <span className="material-symbols-outlined text-[16px]">task_alt</span>
+                                      <span>Entregar</span>
+                                    </button>
+                                  </div>
+                                ) : (order.status as string) === 'DELIVERED' || (order.status as string) === 'Entregado' ? (
+                                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-surface-container text-on-surface-variant text-xs font-bold border border-outline-variant/30">
+                                    <span className="material-symbols-outlined text-[15px] text-emerald-600">done_all</span>
+                                    <span>Entregado</span>
+                                  </span>
+                                ) : (
+                                  <div className="flex items-center gap-2">
+                                    <span className={`px-2.5 py-1 rounded-xl text-xs font-bold border ${getStatusBadge(order.status)}`}>
+                                      {order.status}
+                                    </span>
                                   </div>
                                 )}
                               </td>

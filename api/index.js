@@ -227,6 +227,7 @@ router.get("/", async (_req, res) => {
         ) AS shifts
        FROM branches b
        LEFT JOIN shifts s ON s.branch_id = b.id AND s.is_active = TRUE
+       WHERE b.is_active = TRUE
        GROUP BY b.id
        ORDER BY b.id ASC`
     );
@@ -431,19 +432,17 @@ router.delete("/:id", requireAdmin, async (req, res) => {
     if (idx !== -1) {
       devFallbackBranches.splice(idx, 1);
     }
-    return res.json({ message: "Sede desactivada o eliminada correctamente.", success: true, deleted: true });
+    return res.json({ message: "Sede eliminada permanentemente del sistema.", success: true, deleted: true });
   }
   try {
-    const orderCheck = await query("SELECT id FROM orders WHERE branch_id = $1 LIMIT 1", [id]);
-    if (orderCheck.rows.length > 0) {
-      await query("UPDATE branches SET is_active = FALSE, updated_at = CURRENT_TIMESTAMP WHERE id = $1", [id]);
-      return res.json({
-        message: "La sede tiene pedidos hist\xF3ricos asociados, por lo que fue desactivada de forma segura.",
-        deactivated: true
-      });
+    await query("UPDATE users SET branch_id = NULL WHERE branch_id = $1", [id]);
+    await query("UPDATE orders SET branch_id = NULL WHERE branch_id = $1", [id]);
+    await query("DELETE FROM shifts WHERE branch_id = $1", [id]);
+    const result = await query("DELETE FROM branches WHERE id = $1 RETURNING id", [id]);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Sede no encontrada." });
     }
-    await query("DELETE FROM branches WHERE id = $1", [id]);
-    res.json({ message: "Sede eliminada permanentemente.", deleted: true });
+    res.json({ message: "Sede eliminada permanentemente del sistema.", success: true, deleted: true });
   } catch (error) {
     console.error("Error deleting branch:", error.message);
     res.status(500).json({ error: error.message });
@@ -1661,12 +1660,13 @@ router5.patch("/:id/accept", requireAdmin, async (req, res) => {
   const adminId = req.user?.id || "user-admin-1";
   if (!isDatabaseConfigured()) {
     const found = devFallbackOrders.find((o) => o.id === id);
-    if (found) {
-      found.status = "ACCEPTED";
-      found.statusLabel = "Aceptado por Admin";
-      found.acceptedBy = adminId;
-      found.acceptedAt = (/* @__PURE__ */ new Date()).toISOString();
+    if (!found) {
+      return res.status(404).json({ error: "Pedido no encontrado." });
     }
+    found.status = "ACCEPTED";
+    found.statusLabel = "Aceptado por Admin";
+    found.acceptedBy = adminId;
+    found.acceptedAt = (/* @__PURE__ */ new Date()).toISOString();
     return res.json({ id, status: "ACCEPTED", statusLabel: "Aceptado por Admin", order: found });
   }
   try {
@@ -1733,19 +1733,20 @@ router5.patch("/:id/start-preparation", requireWorkerOrAdmin, async (req, res) =
   const userBranch = user?.branchId;
   if (!isDatabaseConfigured()) {
     const found = devFallbackOrders.find((o) => o.id === id);
-    if (found) {
-      if (user?.role === "WORKER" && userBranch && found.sedeId !== userBranch) {
-        return res.status(403).json({ error: "No puedes tomar pedidos asignados a otra sede operativa." });
-      }
-      if (found.status !== "ACCEPTED") {
-        return res.status(400).json({ error: "El pedido no est\xE1 disponible para preparaci\xF3n." });
-      }
-      found.status = "PREPARING";
-      found.statusLabel = "En preparaci\xF3n";
-      found.preparedBy = workerId;
-      found.preparedByName = workerName;
-      found.preparedAt = (/* @__PURE__ */ new Date()).toISOString();
+    if (!found) {
+      return res.status(404).json({ error: "Pedido no encontrado." });
     }
+    if (user?.role === "WORKER" && userBranch && found.sedeId !== userBranch) {
+      return res.status(403).json({ error: "No puedes tomar pedidos asignados a otra sede operativa." });
+    }
+    if (found.status !== "ACCEPTED") {
+      return res.status(400).json({ error: "El pedido no est\xE1 disponible para preparaci\xF3n." });
+    }
+    found.status = "PREPARING";
+    found.statusLabel = "En preparaci\xF3n";
+    found.preparedBy = workerId;
+    found.preparedByName = workerName;
+    found.preparedAt = (/* @__PURE__ */ new Date()).toISOString();
     return res.json({
       id,
       status: "PREPARING",
@@ -1847,24 +1848,30 @@ router5.patch("/:id/status", requireWorkerOrAdmin, async (req, res) => {
   }
   if (!isDatabaseConfigured()) {
     const found = devFallbackOrders.find((o) => o.id === id);
-    if (found) {
-      if (found.status === "DELIVERED") {
-        return res.status(400).json({
-          error: "El pedido ya fue entregado y su registro es definitivo. No se pueden alterar estados de pedidos entregados."
-        });
-      }
-      if (isWorker && found.status === "READY" && (targetStatusId === "PREPARING" || targetStatusId === "ACCEPTED")) {
-        return res.status(400).json({
-          error: "No est\xE1 permitido revertir pedidos que ya est\xE1n marcados como listos."
-        });
-      }
-      found.status = targetStatusId;
-      found.statusLabel = targetStatusId === "READY" ? "Listo" : targetStatusId === "DELIVERED" ? "Entregado" : targetStatusId;
+    if (!found) {
+      return res.status(404).json({ error: "Pedido no encontrado." });
     }
+    if (found.status === "DELIVERED") {
+      return res.status(400).json({
+        error: "El pedido ya fue entregado y su registro es definitivo. No se pueden alterar estados de pedidos entregados."
+      });
+    }
+    if (isWorker && found.status === "READY" && (targetStatusId === "PREPARING" || targetStatusId === "ACCEPTED")) {
+      return res.status(400).json({
+        error: "No est\xE1 permitido revertir pedidos que ya est\xE1n marcados como listos."
+      });
+    }
+    if (isWorker && targetStatusId === "READY" && found.preparedBy && found.preparedBy !== user?.id) {
+      return res.status(403).json({
+        error: `Solo el colaborador que inici\xF3 la preparaci\xF3n (${found.preparedByName || "otro trabajador"}) puede marcar este pedido como listo.`
+      });
+    }
+    found.status = targetStatusId;
+    found.statusLabel = targetStatusId === "READY" ? "Listo" : targetStatusId === "DELIVERED" ? "Entregado" : targetStatusId;
     return res.json({ id, status: targetStatusId, order: found });
   }
   try {
-    const orderCheck = await query("SELECT status_id, branch_id FROM orders WHERE id = $1", [id]);
+    const orderCheck = await query("SELECT status_id, branch_id, prepared_by, prepared_by_name FROM orders WHERE id = $1", [id]);
     if (orderCheck.rows.length === 0) {
       return res.status(404).json({ error: "Pedido no encontrado." });
     }
@@ -1884,6 +1891,15 @@ router5.patch("/:id/status", requireWorkerOrAdmin, async (req, res) => {
         return res.status(400).json({
           error: "Operaci\xF3n no permitida."
         });
+      }
+      if (targetStatusId === "READY") {
+        const preparerId = orderCheck.rows[0].prepared_by;
+        const preparerName = orderCheck.rows[0].prepared_by_name;
+        if (preparerId && preparerId !== user?.id) {
+          return res.status(403).json({
+            error: `Solo el colaborador que inici\xF3 la preparaci\xF3n (${preparerName || "otro trabajador"}) puede marcar este pedido como listo.`
+          });
+        }
       }
     }
     const result = await query(
@@ -2157,6 +2173,8 @@ var patchMissingUserColumns = async () => {
       ALTER TABLE users ADD COLUMN IF NOT EXISTS default_address VARCHAR(255);
       ALTER TABLE users ADD COLUMN IF NOT EXISTS accepted_terms BOOLEAN NOT NULL DEFAULT TRUE;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_accepted_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP;
+      -- Ensure registered customers are never stored as workers or staff
+      UPDATE users SET role_id = 'CUSTOMER', branch_id = NULL WHERE id LIKE 'cust-%' AND role_id != 'CUSTOMER';
     `);
   } catch (err) {
     console.warn("\u26A0\uFE0F [patchMissingUserColumns]:", err.message);
@@ -2697,6 +2715,7 @@ router7.get("/users", requireAdmin, async (_req, res) => {
               u.created_at AS "createdAt"
        FROM users u
        LEFT JOIN branches b ON b.id = u.branch_id
+       WHERE u.role_id IN ('ADMIN', 'WORKER')
        ORDER BY u.role_id ASC, u.first_name ASC`
     );
     res.json(result.rows);
@@ -2751,6 +2770,9 @@ router7.post("/users", requireAdmin, async (req, res) => {
 router7.put("/users/:id", requireAdmin, async (req, res) => {
   const { id } = req.params;
   const { firstName, lastName, roleId, role, branchId, active, newPassword } = req.body;
+  if (id.startsWith("cust-")) {
+    return res.status(400).json({ error: "No se pueden modificar cuentas de clientes desde la gesti\xF3n de personal." });
+  }
   if (!isDatabaseConfigured()) {
     return res.status(503).json({ error: "Base de datos no configurada." });
   }
@@ -2760,6 +2782,9 @@ router7.put("/users/:id", requireAdmin, async (req, res) => {
       return res.status(404).json({ error: "Usuario no encontrado." });
     }
     const currentTarget = currentRes.rows[0];
+    if (currentTarget.role_id === "CUSTOMER") {
+      return res.status(400).json({ error: "No se pueden modificar cuentas de clientes desde la gesti\xF3n de personal." });
+    }
     let finalRole = currentTarget.role_id;
     if (roleId || role) {
       const specifiedRole = (roleId || role).toUpperCase();

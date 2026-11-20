@@ -180,7 +180,7 @@ export const BusinessConfigForm: React.FC = () => {
       alert('Debe existir al menos una sede activa en el sistema.');
       return;
     }
-    if (!window.confirm(`¿Estás seguro de eliminar o desactivar la sede "${sedeName}"?`)) {
+    if (!window.confirm(`¿Estás seguro de eliminar completamente la sede "${sedeName}"? Se borrará de forma definitiva de la base de datos.`)) {
       return;
     }
 
@@ -191,7 +191,11 @@ export const BusinessConfigForm: React.FC = () => {
     try {
       const res = await deleteBranch(sedeId);
       if (res.success) {
-        setSuccessMessage(`Sede "${sedeName}" eliminada o desactivada correctamente.`);
+        setSuccessMessage(`Sede "${sedeName}" eliminada permanentemente.`);
+        const remaining = sedes.filter((s) => s.id !== sedeId);
+        if (remaining.length > 0) {
+          setSelectedSedeId(remaining[0].id);
+        }
         setTimeout(() => setSuccessMessage(null), 4000);
       } else {
         setErrorMessage(res.error || 'Error al eliminar sede.');
@@ -272,9 +276,9 @@ export const BusinessConfigForm: React.FC = () => {
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-outline-variant/15 pb-4">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-xs font-bold uppercase tracking-wider text-on-surface-variant mr-1">
-                  Sedes ({sedes.length}):
+                  Sedes ({sedes.filter((s) => s.activa !== false).length}):
                 </span>
-                {sedes.map((s) => (
+                {sedes.filter((s) => s.activa !== false).map((s) => (
                   <button
                     key={s.id}
                     type="button"
@@ -287,9 +291,6 @@ export const BusinessConfigForm: React.FC = () => {
                   >
                     <span className="material-symbols-outlined text-[15px]">location_on</span>
                     <span>{s.nombre}</span>
-                    {s.activa === false && (
-                      <span className="text-[10px] bg-error/20 text-error px-1.5 py-0.2 rounded-full font-bold">Inactiva</span>
-                    )}
                   </button>
                 ))}
               </div>
@@ -413,11 +414,12 @@ export const BusinessConfigForm: React.FC = () => {
                   <button
                     type="button"
                     disabled={isSaving}
-                    onClick={() => handleDeleteSede(selectedSedeId, currentSedeOriginal.nombre)}
-                    className="px-4 py-2 rounded-xl border border-error/30 text-error font-medium text-xs hover:bg-error/10 transition-colors flex items-center gap-1.5"
+                    onClick={() => handleDeleteSede(selectedSedeId, currentSedeOriginal?.nombre || 'Sede')}
+                    className="px-4 py-2 rounded-xl bg-error/10 hover:bg-error/20 border border-error/30 text-error font-semibold text-xs transition-colors flex items-center gap-1.5 active:scale-95"
+                    title="Eliminar sede definitivamente de la base de datos"
                   >
-                    <span className="material-symbols-outlined text-[16px]">delete</span>
-                    <span>Desactivar / Eliminar Sede</span>
+                    <span className="material-symbols-outlined text-[16px]">delete_forever</span>
+                    <span>Eliminar Sede Permanentemente</span>
                   </button>
 
                   <button

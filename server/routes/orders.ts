@@ -461,12 +461,13 @@ router.patch('/:id/accept', requireAdmin, async (req: Request, res: Response) =>
 
   if (!isDatabaseConfigured()) {
     const found = devFallbackOrders.find((o) => o.id === id);
-    if (found) {
-      found.status = 'ACCEPTED';
-      found.statusLabel = 'Aceptado por Admin';
-      found.acceptedBy = adminId;
-      found.acceptedAt = new Date().toISOString();
+    if (!found) {
+      return res.status(404).json({ error: 'Pedido no encontrado.' });
     }
+    found.status = 'ACCEPTED';
+    found.statusLabel = 'Aceptado por Admin';
+    found.acceptedBy = adminId;
+    found.acceptedAt = new Date().toISOString();
     return res.json({ id, status: 'ACCEPTED', statusLabel: 'Aceptado por Admin', order: found });
   }
 
@@ -546,19 +547,20 @@ router.patch('/:id/start-preparation', requireWorkerOrAdmin, async (req: Request
 
   if (!isDatabaseConfigured()) {
     const found = devFallbackOrders.find((o) => o.id === id);
-    if (found) {
-      if (user?.role === 'WORKER' && userBranch && found.sedeId !== userBranch) {
-        return res.status(403).json({ error: 'No puedes tomar pedidos asignados a otra sede operativa.' });
-      }
-      if (found.status !== 'ACCEPTED') {
-        return res.status(400).json({ error: 'El pedido no está disponible para preparación.' });
-      }
-      found.status = 'PREPARING';
-      found.statusLabel = 'En preparación';
-      found.preparedBy = workerId;
-      found.preparedByName = workerName;
-      found.preparedAt = new Date().toISOString();
+    if (!found) {
+      return res.status(404).json({ error: 'Pedido no encontrado.' });
     }
+    if (user?.role === 'WORKER' && userBranch && found.sedeId !== userBranch) {
+      return res.status(403).json({ error: 'No puedes tomar pedidos asignados a otra sede operativa.' });
+    }
+    if (found.status !== 'ACCEPTED') {
+      return res.status(400).json({ error: 'El pedido no está disponible para preparación.' });
+    }
+    found.status = 'PREPARING';
+    found.statusLabel = 'En preparación';
+    found.preparedBy = workerId;
+    found.preparedByName = workerName;
+    found.preparedAt = new Date().toISOString();
     return res.json({
       id,
       status: 'PREPARING',
@@ -681,26 +683,33 @@ router.patch('/:id/status', requireWorkerOrAdmin, async (req: Request, res: Resp
 
   if (!isDatabaseConfigured()) {
     const found = devFallbackOrders.find((o) => o.id === id);
-    if (found) {
-      if (found.status === 'DELIVERED') {
-        return res.status(400).json({
-          error: 'El pedido ya fue entregado y su registro es definitivo. No se pueden alterar estados de pedidos entregados.',
-        });
-      }
-      if (isWorker && found.status === 'READY' && (targetStatusId === 'PREPARING' || targetStatusId === 'ACCEPTED')) {
-        return res.status(400).json({
-          error: 'No está permitido revertir pedidos que ya están marcados como listos.',
-        });
-      }
-      found.status = targetStatusId;
-      found.statusLabel = targetStatusId === 'READY' ? 'Listo' : targetStatusId === 'DELIVERED' ? 'Entregado' : targetStatusId;
+    if (!found) {
+      return res.status(404).json({ error: 'Pedido no encontrado.' });
     }
+    if (found.status === 'DELIVERED') {
+      return res.status(400).json({
+        error: 'El pedido ya fue entregado y su registro es definitivo. No se pueden alterar estados de pedidos entregados.',
+      });
+    }
+    if (isWorker && found.status === 'READY' && (targetStatusId === 'PREPARING' || targetStatusId === 'ACCEPTED')) {
+      return res.status(400).json({
+        error: 'No está permitido revertir pedidos que ya están marcados como listos.',
+      });
+    }
+    // Worker exclusivity: only the worker who claimed the order can mark it as ready
+    if (isWorker && targetStatusId === 'READY' && found.preparedBy && found.preparedBy !== user?.id) {
+      return res.status(403).json({
+        error: `Solo el colaborador que inició la preparación (${found.preparedByName || 'otro trabajador'}) puede marcar este pedido como listo.`,
+      });
+    }
+    found.status = targetStatusId;
+    found.statusLabel = targetStatusId === 'READY' ? 'Listo' : targetStatusId === 'DELIVERED' ? 'Entregado' : targetStatusId;
     return res.json({ id, status: targetStatusId, order: found });
   }
 
   try {
     // 1. Fetch current status of order
-    const orderCheck = await query('SELECT status_id, branch_id FROM orders WHERE id = $1', [id]);
+    const orderCheck = await query('SELECT status_id, branch_id, prepared_by, prepared_by_name FROM orders WHERE id = $1', [id]);
     if (orderCheck.rows.length === 0) {
       return res.status(404).json({ error: 'Pedido no encontrado.' });
     }
@@ -724,6 +733,16 @@ router.patch('/:id/status', requireWorkerOrAdmin, async (req: Request, res: Resp
         return res.status(400).json({
           error: 'Operación no permitida.',
         });
+      }
+      // Worker exclusivity: only the worker who claimed the order can mark it as ready
+      if (targetStatusId === 'READY') {
+        const preparerId = orderCheck.rows[0].prepared_by;
+        const preparerName = orderCheck.rows[0].prepared_by_name;
+        if (preparerId && preparerId !== user?.id) {
+          return res.status(403).json({
+            error: `Solo el colaborador que inició la preparación (${preparerName || 'otro trabajador'}) puede marcar este pedido como listo.`,
+          });
+        }
       }
     }
 

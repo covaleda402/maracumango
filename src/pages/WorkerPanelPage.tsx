@@ -40,6 +40,9 @@ export const WorkerPanelPage: React.FC = () => {
   const preparingCount = approvedSedeOrders.filter(
     (o) => o.status === 'PREPARING' || o.status === 'En preparación'
   ).length;
+  const myPreparingCount = approvedSedeOrders.filter(
+    (o) => (o.status === 'PREPARING' || o.status === 'En preparación') && o.preparedBy === currentUser?.id
+  ).length;
   const readyCount = approvedSedeOrders.filter(
     (o) => o.status === 'Listo' || o.status === 'READY'
   ).length;
@@ -51,6 +54,9 @@ export const WorkerPanelPage: React.FC = () => {
     selectedStatusFilter === 'Todos'
       ? approvedSedeOrders
       : approvedSedeOrders.filter((o) => {
+          if (selectedStatusFilter === 'Mis Preparaciones') {
+            return (o.status === 'PREPARING' || o.status === 'En preparación') && o.preparedBy === currentUser?.id;
+          }
           if (selectedStatusFilter === 'Por Preparar') {
             return o.status === 'ACCEPTED' || (o.status as string) === 'Aceptado';
           }
@@ -315,6 +321,17 @@ export const WorkerPanelPage: React.FC = () => {
                 }`}
               >
                 Todos los Aprobados
+              </button>
+              <button
+                onClick={() => setSelectedStatusFilter('Mis Preparaciones')}
+                className={`px-3 py-1.5 rounded-full text-xs font-semibold border flex items-center gap-1 ${
+                  selectedStatusFilter === 'Mis Preparaciones'
+                    ? 'bg-primary-container text-on-primary font-bold shadow-sm'
+                    : 'bg-surface-container-low text-on-surface-variant hover:bg-surface-container'
+                }`}
+              >
+                <span className="material-symbols-outlined text-[15px]">soup_kitchen</span>
+                <span>Mis Preparaciones ({myPreparingCount})</span>
               </button>
               <button
                 onClick={() => setSelectedStatusFilter('Por Preparar')}

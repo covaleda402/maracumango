@@ -740,6 +740,151 @@ async function startSuite() {
       }
     }, baseUrl);
 
+    // ====================================================================
+    // SUITE 10: VALIDACIÓN DE NOVEDADES Y REGLAS DE NEGOCIO (REQUERIMIENTO 10)
+    // ====================================================================
+    console.log('\n--- 🛡️ SUITE 10: NOVEDADES DE SEGURIDAD, ROLES, SEDES Y CONCURRENCIA ---');
+
+    await runTest('Personal & Roles', '10.1 Clientes registrados NUNCA aparecen en /api/auth/users', async (url) => {
+      const res = await fetch(`${url}/auth/users`, {
+        headers: { Authorization: `Bearer ${adminToken}` },
+      });
+      if (!res.ok) throw new Error(`Error consultando usuarios: ${res.status}`);
+      const users: any[] = await res.json();
+      const customerInStaff = users.find((u) => u.role === 'CUSTOMER' || u.roleId === 'CUSTOMER' || u.id.startsWith('cust-'));
+      if (customerInStaff) {
+        throw new Error(`Se encontró cuenta de cliente en listado de personal: ${customerInStaff.email}`);
+      }
+    }, baseUrl);
+
+    await runTest('Personal & Roles', '10.2 Protección: cuentas de clientes no son editables desde /api/auth/users/:id', async (url) => {
+      const res = await fetch(`${url}/auth/users/${_customerUserId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${adminToken}`,
+        },
+        body: JSON.stringify({ roleId: 'WORKER', branchId: 'sede-1' }),
+      });
+      // Should be 400 or 404
+      if (res.status !== 400 && res.status !== 404) {
+        throw new Error(`Se esperaba 400 o 404 protegiendo cuenta de cliente, se obtuvo: ${res.status}`);
+      }
+    }, baseUrl);
+
+    let testBranchId = '';
+    await runTest('Sedes', '10.3 Creación y eliminación definitiva (Hard Delete) de sedes operativas', async (url) => {
+      // 1. Create temporary test branch
+      const createRes = await fetch(`${url}/branches`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${adminToken}`,
+        },
+        body: JSON.stringify({
+          nombre: 'Sede Prueba Hard Delete',
+          direccion: 'Carrera 5 # 10-20',
+          whatsapp: '3180000000',
+        }),
+      });
+      if (!createRes.ok) throw new Error(`Error creando sede de prueba: ${createRes.status}`);
+      const created = await createRes.json();
+      testBranchId = created.id;
+
+      // 2. Hard delete the branch
+      const delRes = await fetch(`${url}/branches/${testBranchId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${adminToken}` },
+      });
+      if (!delRes.ok) throw new Error(`Error eliminando sede: ${delRes.status}`);
+      const delData = await delRes.json();
+      if (!delData.deleted) {
+        throw new Error(`Se esperaba confirmación de eliminación definitiva.`);
+      }
+
+      // 3. Confirm it no longer exists
+      const verifyRes = await fetch(`${url}/branches/${testBranchId}`);
+      if (verifyRes.status !== 404) {
+        throw new Error(`La sede aún existe tras la eliminación definitiva.`);
+      }
+    }, baseUrl);
+
+    await runTest('Concurrencia Barra', '10.4 Exclusividad de preparación: Worker B no puede marcar READY el pedido de Worker A', async (url) => {
+      // 1. Create order as authenticated customer
+      const createRes = await fetch(`${url}/orders`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${customerToken}`,
+        },
+        body: JSON.stringify({
+          customerName: 'Cliente Test Exclusividad',
+          customerPhone: '3001234567',
+          sedeId: 'sede-1',
+          deliveryMethod: 'recoger',
+          paymentMethod: 'efectivo',
+          items: [{ productId: 'p1', productName: 'Granizado', unitPrice: 12000, quantity: 1 }],
+        }),
+      });
+      if (!createRes.ok) throw new Error(`Error creando pedido para prueba 10.4: ${createRes.status}`);
+      const order = await createRes.json();
+
+      // 2. Admin approves order
+      await fetch(`${url}/orders/${order.id}/accept`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${adminToken}` },
+      });
+
+      // 3. Worker A (Carlos) takes preparation
+      const claimRes = await fetch(`${url}/orders/${order.id}/start-preparation`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${workerToken}` },
+      });
+      if (!claimRes.ok) throw new Error(`Worker A falló tomando pedido: ${claimRes.status}`);
+
+      // 4. Worker B (Laura) logs in and tries to mark it as READY -> MUST be rejected with 403
+      // Generate Worker B token
+      const workerBPayload = {
+        id: 'user-worker-2',
+        name: 'Laura Trujillo',
+        email: 'laura@maracumango.com',
+        role: 'WORKER',
+        roleId: 'WORKER',
+        branchId: 'sede-1',
+      };
+      const workerBToken = (await import('jsonwebtoken')).default.sign(
+        workerBPayload,
+        process.env.JWT_SECRET || 'maracumango_super_secret_jwt_key_2026_prod'
+      );
+
+      const workerBTryRes = await fetch(`${url}/orders/${order.id}/status`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${workerBToken}`,
+        },
+        body: JSON.stringify({ status: 'READY' }),
+      });
+
+      if (workerBTryRes.status !== 403) {
+        throw new Error(`Se esperaba HTTP 403 prohibiendo a Worker B marcar READY, se obtuvo: ${workerBTryRes.status}`);
+      }
+
+      // 5. Worker A (Carlos) marks it as READY -> MUST succeed
+      const workerASuccessRes = await fetch(`${url}/orders/${order.id}/status`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${workerToken}`,
+        },
+        body: JSON.stringify({ status: 'READY' }),
+      });
+
+      if (!workerASuccessRes.ok) {
+        throw new Error(`Worker A debería poder marcar como READY su pedido: ${workerASuccessRes.status}`);
+      }
+    }, baseUrl);
+
   } finally {
     server.close();
   }

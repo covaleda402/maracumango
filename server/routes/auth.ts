@@ -35,6 +35,8 @@ const patchMissingUserColumns = async () => {
       ALTER TABLE users ADD COLUMN IF NOT EXISTS default_address VARCHAR(255);
       ALTER TABLE users ADD COLUMN IF NOT EXISTS accepted_terms BOOLEAN NOT NULL DEFAULT TRUE;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_accepted_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP;
+      -- Ensure registered customers are never stored as workers or staff
+      UPDATE users SET role_id = 'CUSTOMER', branch_id = NULL WHERE id LIKE 'cust-%' AND role_id != 'CUSTOMER';
     `);
   } catch (err: any) {
     console.warn('⚠️ [patchMissingUserColumns]:', err.message);
@@ -642,7 +644,7 @@ router.put('/profile', async (req: Request, res: Response) => {
   }
 });
 
-// GET /api/auth/users — List all staff accounts (Admin only)
+// GET /api/auth/users — List all staff accounts (Admin only, strictly excludes customers)
 router.get('/users', requireAdmin, async (_req: Request, res: Response) => {
   if (!isDatabaseConfigured()) {
     return res.json([
@@ -667,6 +669,7 @@ router.get('/users', requireAdmin, async (_req: Request, res: Response) => {
               u.created_at AS "createdAt"
        FROM users u
        LEFT JOIN branches b ON b.id = u.branch_id
+       WHERE u.role_id IN ('ADMIN', 'WORKER')
        ORDER BY u.role_id ASC, u.first_name ASC`
     );
     res.json(result.rows);
@@ -740,6 +743,11 @@ router.put('/users/:id', requireAdmin, async (req: Request, res: Response) => {
   const { id } = req.params;
   const { firstName, lastName, roleId, role, branchId, active, newPassword } = req.body;
 
+  // Protect customer accounts from being modified via staff management endpoint
+  if (id.startsWith('cust-')) {
+    return res.status(400).json({ error: 'No se pueden modificar cuentas de clientes desde la gestión de personal.' });
+  }
+
   if (!isDatabaseConfigured()) {
     return res.status(503).json({ error: 'Base de datos no configurada.' });
   }
@@ -751,6 +759,11 @@ router.put('/users/:id', requireAdmin, async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Usuario no encontrado.' });
     }
     const currentTarget = currentRes.rows[0];
+
+    // Protect customer accounts from being modified via staff management endpoint
+    if (currentTarget.role_id === 'CUSTOMER') {
+      return res.status(400).json({ error: 'No se pueden modificar cuentas de clientes desde la gestión de personal.' });
+    }
 
     // Determine target role: don't accidentally demote ADMIN unless explicitly intended
     let finalRole = currentTarget.role_id;

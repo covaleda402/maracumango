@@ -8,10 +8,13 @@ interface WorkerOrderCardProps {
 }
 
 export const WorkerOrderCard: React.FC<WorkerOrderCardProps> = ({ order }) => {
-  const { updateOrderStatus, startPreparation } = useApp();
+  const { updateOrderStatus, startPreparation, currentUser } = useApp();
   const [expandedIngredients, setExpandedIngredients] = useState<Record<number, boolean>>({});
   const [actionError, setActionError] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+
+  const isPreparing = order.status === 'PREPARING' || (order.status as string) === 'En preparación';
+  const isPreparedByOther = isPreparing && Boolean(order.preparedBy) && order.preparedBy !== currentUser?.id;
 
   const toggleIngredient = (idx: number) => {
     setExpandedIngredients((prev) => ({
@@ -42,11 +45,17 @@ export const WorkerOrderCard: React.FC<WorkerOrderCardProps> = ({ order }) => {
 
   const handleAction = async () => {
     setActionError(null);
+
+    if (isPreparedByOther) {
+      setActionError(`Solo ${order.preparedByName || 'el compañero que tomó el pedido'} puede marcarlo como listo.`);
+      return;
+    }
+
     setIsProcessing(true);
 
     try {
       if (order.status === 'ACCEPTED' || (order.status as string) === 'Aceptado') {
-        // Point 11 & 12: Atomic preparation claiming
+        // Atomic preparation claiming
         const res = await startPreparation(order.id);
         if (!res.success) {
           setActionError(res.error || 'No se pudo tomar el pedido.');
@@ -71,13 +80,26 @@ export const WorkerOrderCard: React.FC<WorkerOrderCardProps> = ({ order }) => {
           label: 'EMPEZAR A PREPARAR',
           btnClass: 'bg-primary-container text-on-primary hover:bg-primary',
           icon: 'blender',
+          disabled: false,
+          tooltip: 'Tomar pedido e iniciar preparación',
         };
       case 'En preparación':
       case 'PREPARING':
+        if (isPreparedByOther) {
+          return {
+            label: `En preparación por ${order.preparedByName || 'compañero'}`,
+            btnClass: 'bg-surface-container text-on-surface-variant cursor-not-allowed border border-outline-variant/40 opacity-80',
+            icon: 'lock',
+            disabled: true,
+            tooltip: `Pedido tomado por ${order.preparedByName}. Solo esta persona puede marcarlo como listo.`,
+          };
+        }
         return {
           label: 'Marcar como Listo',
           btnClass: 'bg-tertiary-container text-on-tertiary hover:bg-tertiary',
           icon: 'check_circle',
+          disabled: false,
+          tooltip: 'Finalizar preparación y notificar al cliente',
         };
       case 'Listo':
       case 'READY':
@@ -85,6 +107,8 @@ export const WorkerOrderCard: React.FC<WorkerOrderCardProps> = ({ order }) => {
           label: 'Entregar Pedido',
           btnClass: 'bg-surface-container-highest text-on-surface hover:bg-outline-variant/30',
           icon: 'task_alt',
+          disabled: false,
+          tooltip: 'Confirmar entrega al cliente',
         };
       default:
         return null;
@@ -127,11 +151,36 @@ export const WorkerOrderCard: React.FC<WorkerOrderCardProps> = ({ order }) => {
           </div>
         </div>
 
-        {/* Worker Assignment Tag (Point 11) */}
+        {/* Worker Assignment Tag */}
         {order.preparedByName && (
-          <div className="mb-2 px-3 py-1 rounded-xl bg-primary-container/10 border border-primary/20 text-xs font-semibold text-primary flex items-center gap-1.5">
-            <span className="material-symbols-outlined text-[16px]">person</span>
-            <span>En preparación por: <strong>{order.preparedByName}</strong></span>
+          <div
+            className={`mb-2 px-3 py-1.5 rounded-xl border text-xs font-semibold flex items-center justify-between gap-1.5 ${
+              isPreparedByOther
+                ? 'bg-amber-500/10 border-amber-500/30 text-amber-800 dark:text-amber-300'
+                : 'bg-primary-container/15 border-primary/25 text-primary'
+            }`}
+          >
+            <div className="flex items-center gap-1.5">
+              <span className="material-symbols-outlined text-[16px]">
+                {isPreparedByOther ? 'lock' : 'soup_kitchen'}
+              </span>
+              <span>
+                {isPreparedByOther ? (
+                  <>
+                    En preparación por: <strong>{order.preparedByName}</strong>
+                  </>
+                ) : (
+                  <>
+                    <strong>Tú estás preparando este pedido</strong>
+                  </>
+                )}
+              </span>
+            </div>
+            {isPreparedByOther && (
+              <span className="text-[10px] bg-amber-500/20 text-amber-900 dark:text-amber-200 px-2 py-0.5 rounded-full font-bold">
+                Exclusivo
+              </span>
+            )}
           </div>
         )}
 
@@ -274,8 +323,13 @@ export const WorkerOrderCard: React.FC<WorkerOrderCardProps> = ({ order }) => {
           {nextAction && (
             <button
               onClick={handleAction}
-              disabled={isProcessing}
-              className={`px-4 py-2.5 rounded-2xl font-label-md text-label-md shadow-sm transition-all active:scale-95 flex items-center gap-1.5 disabled:opacity-50 ${nextAction.btnClass}`}
+              disabled={isProcessing || nextAction.disabled}
+              title={nextAction.tooltip}
+              className={`px-4 py-2.5 rounded-2xl font-label-md text-label-md shadow-sm transition-all flex items-center gap-1.5 ${
+                nextAction.disabled
+                  ? 'opacity-80 cursor-not-allowed'
+                  : 'active:scale-95 disabled:opacity-50'
+              } ${nextAction.btnClass}`}
             >
               <span className="material-symbols-outlined text-[18px]">{nextAction.icon}</span>
               <span>{isProcessing ? 'Procesando...' : nextAction.label}</span>

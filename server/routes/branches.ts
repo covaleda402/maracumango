@@ -31,6 +31,7 @@ router.get('/', async (_req: Request, res: Response) => {
         ) AS shifts
        FROM branches b
        LEFT JOIN shifts s ON s.branch_id = b.id AND s.is_active = TRUE
+       WHERE b.is_active = TRUE
        GROUP BY b.id
        ORDER BY b.id ASC`
     );
@@ -261,7 +262,7 @@ router.post('/', requireAdmin, async (req: Request, res: Response) => {
   }
 });
 
-// DELETE /api/branches/:id — Soft delete or remove branch (Admin only)
+// DELETE /api/branches/:id — Hard delete branch completely (Admin only)
 router.delete('/:id', requireAdmin, async (req: Request, res: Response) => {
   const { id } = req.params;
 
@@ -270,24 +271,26 @@ router.delete('/:id', requireAdmin, async (req: Request, res: Response) => {
     if (idx !== -1) {
       devFallbackBranches.splice(idx, 1);
     }
-    return res.json({ message: 'Sede desactivada o eliminada correctamente.', success: true, deleted: true });
+    return res.json({ message: 'Sede eliminada permanentemente del sistema.', success: true, deleted: true });
   }
 
   try {
-    // Check if the branch has historical orders
-    const orderCheck = await query('SELECT id FROM orders WHERE branch_id = $1 LIMIT 1', [id]);
-    if (orderCheck.rows.length > 0) {
-      // Soft-delete to preserve order history and analytics
-      await query('UPDATE branches SET is_active = FALSE, updated_at = CURRENT_TIMESTAMP WHERE id = $1', [id]);
-      return res.json({
-        message: 'La sede tiene pedidos históricos asociados, por lo que fue desactivada de forma segura.',
-        deactivated: true,
-      });
+    // 1. Unlink any users assigned to this branch
+    await query('UPDATE users SET branch_id = NULL WHERE branch_id = $1', [id]);
+
+    // 2. Unlink any orders associated with this branch (preserves financial totals)
+    await query('UPDATE orders SET branch_id = NULL WHERE branch_id = $1', [id]);
+
+    // 3. Remove operational shifts for this branch
+    await query('DELETE FROM shifts WHERE branch_id = $1', [id]);
+
+    // 4. Delete the branch record completely
+    const result = await query('DELETE FROM branches WHERE id = $1 RETURNING id', [id]);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Sede no encontrada.' });
     }
 
-    // Try hard delete if no historical orders
-    await query('DELETE FROM branches WHERE id = $1', [id]);
-    res.json({ message: 'Sede eliminada permanentemente.', deleted: true });
+    res.json({ message: 'Sede eliminada permanentemente del sistema.', success: true, deleted: true });
   } catch (error: any) {
     console.error('Error deleting branch:', error.message);
     res.status(500).json({ error: error.message });

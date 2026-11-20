@@ -31,6 +31,11 @@ export const StaffManager: React.FC = () => {
 
   const branchesList = sedes.length > 0 ? sedes : SEDES;
 
+  // Filter strictly to only show employees / administrative staff (exclude customer accounts)
+  const actualStaffUsers = staffUsers.filter(
+    (u) => (u.role === 'ADMIN' || u.role === 'WORKER') && !u.id.startsWith('cust-')
+  );
+
   useEffect(() => {
     loadStaffUsers();
   }, []);
@@ -226,14 +231,14 @@ export const StaffManager: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-outline-variant/15 text-sm">
-              {staffUsers.length === 0 ? (
+              {actualStaffUsers.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="p-8 text-center text-on-surface-variant">
                     No se encontraron colaboradores registrados en la base de datos.
                   </td>
                 </tr>
               ) : (
-                staffUsers.map((user) => {
+                actualStaffUsers.map((user) => {
                   const isCurrent = user.id === currentUser?.id;
                   const isActive = user.active !== false;
                   const sedeObj = branchesList.find((s) => s.id === user.branchId);
