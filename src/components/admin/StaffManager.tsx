@@ -29,7 +29,9 @@ export const StaffManager: React.FC = () => {
   const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const branchesList = sedes.length > 0 ? sedes : SEDES;
+  const branchesList = (sedes.length > 0 ? sedes : SEDES).filter(
+    (s) => s.activa !== false && !s.nombre.toLowerCase().includes('covaleda') && s.id !== 'sede-1795151700722'
+  );
 
   // Filter strictly to only show employees / administrative staff (exclude customer accounts)
   const actualStaffUsers = staffUsers.filter(

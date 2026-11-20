@@ -81,8 +81,15 @@ var ensureSchema = async () => {
           -- 6. Indexes for performance and safety
           CREATE INDEX IF NOT EXISTS idx_users_email_lower ON users(LOWER(email));
           CREATE INDEX IF NOT EXISTS idx_reset_email_code ON password_reset_tokens(email, code);
+
+          -- 7. Self-healing cleanup: Purge deleted/covaleda branches and fix customer roles
+          UPDATE users SET branch_id = 'sede-1' WHERE branch_id = 'sede-1795151700722' OR branch_id IN (SELECT id FROM branches WHERE is_active = FALSE OR LOWER(name) LIKE '%covaleda%');
+          UPDATE orders SET branch_id = 'sede-1' WHERE branch_id = 'sede-1795151700722' OR branch_id IN (SELECT id FROM branches WHERE is_active = FALSE OR LOWER(name) LIKE '%covaleda%');
+          DELETE FROM shifts WHERE branch_id = 'sede-1795151700722' OR branch_id IN (SELECT id FROM branches WHERE is_active = FALSE OR LOWER(name) LIKE '%covaleda%');
+          DELETE FROM branches WHERE id = 'sede-1795151700722' OR is_active = FALSE OR LOWER(name) LIKE '%covaleda%';
+          UPDATE users SET role_id = 'CUSTOMER', branch_id = NULL WHERE id LIKE 'cust-%' AND role_id != 'CUSTOMER';
         `);
-        console.log("\u2705 [Database]: Esquema, columnas (phone, default_address) y tablas de seguridad verificados/migrados.");
+        console.log("\u2705 [Database]: Esquema, columnas (phone, default_address), tablas de seguridad y depuraci\xF3n de sedes verificadas/migradas.");
       } catch (err) {
         console.error("\u26A0\uFE0F [Database Schema Ensure Warning]:", err.message);
       }
@@ -227,7 +234,7 @@ router.get("/", async (_req, res) => {
         ) AS shifts
        FROM branches b
        LEFT JOIN shifts s ON s.branch_id = b.id AND s.is_active = TRUE
-       WHERE b.is_active = TRUE
+       WHERE b.is_active = TRUE AND LOWER(b.name) NOT LIKE '%covaleda%' AND b.id != 'sede-1795151700722'
        GROUP BY b.id
        ORDER BY b.id ASC`
     );
@@ -435,8 +442,8 @@ router.delete("/:id", requireAdmin, async (req, res) => {
     return res.json({ message: "Sede eliminada permanentemente del sistema.", success: true, deleted: true });
   }
   try {
-    await query("UPDATE users SET branch_id = NULL WHERE branch_id = $1", [id]);
-    await query("UPDATE orders SET branch_id = NULL WHERE branch_id = $1", [id]);
+    await query("UPDATE users SET branch_id = 'sede-1' WHERE branch_id = $1", [id]);
+    await query("UPDATE orders SET branch_id = 'sede-1' WHERE branch_id = $1", [id]);
     await query("DELETE FROM shifts WHERE branch_id = $1", [id]);
     const result = await query("DELETE FROM branches WHERE id = $1 RETURNING id", [id]);
     if (result.rows.length === 0) {
@@ -1366,7 +1373,8 @@ router5.get("/", async (req, res) => {
         o.delivery_fee::float AS "deliveryFee",
         o.total::float AS total,
         os.id AS "statusId",
-        os.name AS status,
+        os.id AS status,
+        os.name AS "statusName",
         os.label AS "statusLabel",
         o.notes,
         o.accepted_by AS "acceptedBy",

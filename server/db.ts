@@ -84,8 +84,15 @@ export const ensureSchema = async (): Promise<void> => {
           -- 6. Indexes for performance and safety
           CREATE INDEX IF NOT EXISTS idx_users_email_lower ON users(LOWER(email));
           CREATE INDEX IF NOT EXISTS idx_reset_email_code ON password_reset_tokens(email, code);
+
+          -- 7. Self-healing cleanup: Purge deleted/covaleda branches and fix customer roles
+          UPDATE users SET branch_id = 'sede-1' WHERE branch_id = 'sede-1795151700722' OR branch_id IN (SELECT id FROM branches WHERE is_active = FALSE OR LOWER(name) LIKE '%covaleda%');
+          UPDATE orders SET branch_id = 'sede-1' WHERE branch_id = 'sede-1795151700722' OR branch_id IN (SELECT id FROM branches WHERE is_active = FALSE OR LOWER(name) LIKE '%covaleda%');
+          DELETE FROM shifts WHERE branch_id = 'sede-1795151700722' OR branch_id IN (SELECT id FROM branches WHERE is_active = FALSE OR LOWER(name) LIKE '%covaleda%');
+          DELETE FROM branches WHERE id = 'sede-1795151700722' OR is_active = FALSE OR LOWER(name) LIKE '%covaleda%';
+          UPDATE users SET role_id = 'CUSTOMER', branch_id = NULL WHERE id LIKE 'cust-%' AND role_id != 'CUSTOMER';
         `);
-        console.log('✅ [Database]: Esquema, columnas (phone, default_address) y tablas de seguridad verificados/migrados.');
+        console.log('✅ [Database]: Esquema, columnas (phone, default_address), tablas de seguridad y depuración de sedes verificadas/migradas.');
       } catch (err: any) {
         console.error('⚠️ [Database Schema Ensure Warning]:', err.message);
       }

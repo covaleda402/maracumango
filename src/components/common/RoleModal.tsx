@@ -159,10 +159,10 @@ export const RoleModal: React.FC = () => {
       const res = await apiService.forgotPassword(cleanEmail);
       if (res.success) {
         setResetStep(2);
-        if (res.code) {
-          setResetCode(res.code);
-          setGeneratedCodeHint(`Código generado: ${res.code} (Autocompletado para verificación rápida)`);
-        }
+        setResetCode('');
+        setGeneratedCodeHint(
+          'Hemos enviado un código de verificación de 6 dígitos a tu correo electrónico registrado. Por favor búscalo en tu bandeja de entrada o spam e ingrésalo a continuación.'
+        );
       } else {
         setErrorMessage(res.error || 'No se pudo generar el código de recuperación.');
       }
@@ -805,24 +805,29 @@ export const RoleModal: React.FC = () => {
                 ) : (
                   <form onSubmit={handlePerformPasswordReset} className="space-y-3">
                     {generatedCodeHint && (
-                      <div className="p-2.5 rounded-xl bg-tertiary-container/30 border border-tertiary-container/50 text-[11px] text-on-tertiary-container font-semibold flex items-center gap-2">
-                        <span className="material-symbols-outlined text-[16px]">key</span>
-                        <span>{generatedCodeHint}</span>
+                      <div className="p-3 rounded-2xl bg-secondary-container/20 border border-secondary-container/30 text-xs text-on-surface flex items-start gap-2.5">
+                        <span className="material-symbols-outlined text-secondary text-[20px] shrink-0 mt-0.5">
+                          mark_email_read
+                        </span>
+                        <div className="leading-snug">
+                          <strong>Revisa tu correo:</strong> {generatedCodeHint}
+                        </div>
                       </div>
                     )}
 
                     <div>
                       <label className="block text-xs font-medium text-on-surface mb-1">
-                        Código de 6 Dígitos
+                        Código de 6 Dígitos <span className="text-error">*</span>
                       </label>
                       <input
                         type="text"
                         maxLength={6}
                         value={resetCode}
                         onChange={(e) => setResetCode(e.target.value.replace(/\D/g, ''))}
-                        placeholder="123456"
-                        className="w-full px-3.5 py-2.5 rounded-xl border border-outline-variant/30 bg-surface-container-lowest text-center tracking-widest text-sm font-bold text-on-surface focus:outline-none focus:ring-2 focus:ring-primary"
+                        placeholder="Ej: 123456"
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-outline-variant/30 bg-surface-container-lowest text-center tracking-widest text-base font-bold text-on-surface focus:outline-none focus:ring-2 focus:ring-primary"
                         required
+                        autoFocus
                       />
                     </div>
 

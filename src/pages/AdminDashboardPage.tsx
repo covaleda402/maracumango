@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import type { Product, OrderStatus } from '../types';
+import type { Product, Order } from '../types';
 import { ProductFormModal } from '../components/admin/ProductFormModal';
 import { BusinessConfigForm } from '../components/admin/BusinessConfigForm';
 import { CategoryManager } from '../components/admin/CategoryManager';
@@ -12,6 +12,7 @@ export const AdminDashboardPage: React.FC = () => {
     orders,
     products,
     categories,
+    sedes,
     toggleProductActive,
     deleteProduct,
     updateOrderStatus,
@@ -32,11 +33,43 @@ export const AdminDashboardPage: React.FC = () => {
     'dashboard' | 'pedidos' | 'productos' | 'categorias' | 'personal' | 'configuracion'
   >('dashboard');
 
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [productToEdit, setProductToEdit] = useState<Product | null>(null);
   const [productCategoryFilter, setProductCategoryFilter] = useState<string>('Todos');
   const [productFeedback, setProductFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [isExportingCsv, setIsExportingCsv] = useState(false);
+
+  // Status Normalization Helpers (Supports both Postgres ENUM IDs, Labels, and Legacy strings)
+  const isPendingAdmin = (order: Order) => {
+    const s = String((order as any).statusId || order.status || '').toUpperCase().trim();
+    return s === 'PENDING_ADMIN' || s === 'PENDIENTE' || s === 'PENDIENTE ADMIN';
+  };
+
+  const isAccepted = (order: Order) => {
+    const s = String((order as any).statusId || order.status || '').toUpperCase().trim();
+    return s === 'ACCEPTED' || s === 'ACEPTADO';
+  };
+
+  const isPreparing = (order: Order) => {
+    const s = String((order as any).statusId || order.status || '').toUpperCase().trim();
+    return s === 'PREPARING' || s === 'EN PREPARACIÓN' || s === 'EN PREPARACION';
+  };
+
+  const isReady = (order: Order) => {
+    const s = String((order as any).statusId || order.status || '').toUpperCase().trim();
+    return s === 'READY' || s === 'LISTO';
+  };
+
+  const isDelivered = (order: Order) => {
+    const s = String((order as any).statusId || order.status || '').toUpperCase().trim();
+    return s === 'DELIVERED' || s === 'ENTREGADO';
+  };
+
+  const isCancelled = (order: Order) => {
+    const s = String((order as any).statusId || order.status || '').toUpperCase().trim();
+    return s === 'CANCELLED' || s === 'CANCELADO';
+  };
 
   // Order filters for Pedidos tab
   const [orderSearch, setOrderSearch] = useState('');
@@ -50,9 +83,7 @@ export const AdminDashboardPage: React.FC = () => {
       : orders.filter((o) => o.sedeId === adminSedeId);
 
   // Business Rule: Canceled orders MUST NOT count as sales or valid orders!
-  const validOrders = adminOrders.filter(
-    (o) => (o.status as string) !== 'CANCELLED' && (o.status as string) !== 'Cancelado'
-  );
+  const validOrders = adminOrders.filter((o) => !isCancelled(o));
 
   // KPI Calculations (Strictly on valid orders)
   const totalSales = validOrders.reduce((sum, ord) => sum + ord.total, 0);
@@ -60,15 +91,11 @@ export const AdminDashboardPage: React.FC = () => {
   const averageTicket = totalOrdersCount > 0 ? Math.round(totalSales / totalOrdersCount) : 0;
   const activeProductsCount = products.filter((p) => p.active !== false).length;
 
-  const countPending = adminOrders.filter(
-    (o) => o.status === 'Pendiente' || o.status === 'PENDING_ADMIN'
-  ).length;
-  const countAprobados = adminOrders.filter((o) => o.status === 'ACCEPTED').length;
-  const countPreparing = adminOrders.filter(
-    (o) => o.status === 'En preparación' || o.status === 'PREPARING'
-  ).length;
-  const countReady = adminOrders.filter((o) => o.status === 'Listo' || o.status === 'READY').length;
-  const countDelivered = adminOrders.filter((o) => o.status === 'Entregado' || o.status === 'DELIVERED').length;
+  const countPending = adminOrders.filter(isPendingAdmin).length;
+  const countAprobados = adminOrders.filter(isAccepted).length;
+  const countPreparing = adminOrders.filter(isPreparing).length;
+  const countReady = adminOrders.filter(isReady).length;
+  const countDelivered = adminOrders.filter(isDelivered).length;
   const countDomicilio = validOrders.filter((o) => o.deliveryMethod === 'domicilio').length;
   const countRecoger = validOrders.filter((o) => o.deliveryMethod === 'recoger').length;
 
@@ -147,17 +174,17 @@ export const AdminDashboardPage: React.FC = () => {
     if (orderStatusFilter === 'Todos') {
       matchesStatus = true;
     } else if (orderStatusFilter === 'APROBADOS') {
-      matchesStatus = ord.status === 'ACCEPTED';
+      matchesStatus = isAccepted(ord);
     } else if (orderStatusFilter === 'EN PREPARACIÓN') {
-      matchesStatus = ord.status === 'PREPARING' || ord.status === 'En preparación';
+      matchesStatus = isPreparing(ord);
     } else if (orderStatusFilter === 'LISTOS') {
-      matchesStatus = ord.status === 'READY' || ord.status === 'Listo';
+      matchesStatus = isReady(ord);
     } else if (orderStatusFilter === 'ENTREGADOS') {
-      matchesStatus = ord.status === 'DELIVERED' || ord.status === 'Entregado';
+      matchesStatus = isDelivered(ord);
     } else if (orderStatusFilter === 'CANCELADOS') {
-      matchesStatus = ord.status === 'CANCELLED' || (ord.status as string) === 'Cancelado';
+      matchesStatus = isCancelled(ord);
     } else if (orderStatusFilter === 'Pendiente') {
-      matchesStatus = ord.status === 'PENDING_ADMIN' || ord.status === 'Pendiente';
+      matchesStatus = isPendingAdmin(ord);
     } else {
       matchesStatus = ord.status === orderStatusFilter;
     }
@@ -167,26 +194,27 @@ export const AdminDashboardPage: React.FC = () => {
     return matchesSearch && matchesStatus && matchesDelivery;
   });
 
-  const getStatusBadge = (status: OrderStatus) => {
-    switch (status) {
-      case 'Pendiente':
-      case 'PENDING_ADMIN':
-        return 'bg-amber-500/15 text-amber-600 border-amber-500/30';
-      case 'ACCEPTED':
-      case 'En preparación':
-      case 'PREPARING':
-        return 'bg-primary-container/20 text-primary border-primary/30';
-      case 'Listo':
-      case 'READY':
-        return 'bg-tertiary-container/20 text-tertiary border-tertiary/30';
-      case 'Entregado':
-      case 'DELIVERED':
-        return 'bg-surface-container-high text-on-surface-variant border-outline-variant/30';
-      case 'CANCELLED':
-        return 'bg-error-container/20 text-error border-error/30';
-      default:
-        return 'bg-surface-container text-on-surface';
+  const getStatusBadge = (status: any) => {
+    const s = String(status || '').toUpperCase().trim();
+    if (s === 'PENDING_ADMIN' || s === 'PENDIENTE' || s === 'PENDIENTE ADMIN') {
+      return 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30';
     }
+    if (s === 'ACCEPTED' || s === 'ACEPTADO') {
+      return 'bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/30';
+    }
+    if (s === 'PREPARING' || s === 'EN PREPARACIÓN' || s === 'EN PREPARACION') {
+      return 'bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-500/30';
+    }
+    if (s === 'READY' || s === 'LISTO') {
+      return 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30';
+    }
+    if (s === 'DELIVERED' || s === 'ENTREGADO') {
+      return 'bg-surface-container-high text-on-surface-variant border-outline-variant/30';
+    }
+    if (s === 'CANCELLED' || s === 'CANCELADO') {
+      return 'bg-error-container/20 text-error border-error/30';
+    }
+    return 'bg-surface-container text-on-surface';
   };
 
 
@@ -293,28 +321,41 @@ export const AdminDashboardPage: React.FC = () => {
 
       {/* Main Admin Body */}
       <div className="flex-1 md:pl-64 w-full">
-        {/* Top Sticky Header with Sede Switcher */}
-        <header className="sticky top-0 bg-surface/90 backdrop-blur-xl shadow-sm z-30 flex flex-wrap items-center justify-between px-space-lg py-3 gap-3 border-b border-outline-variant/20">
-          <div className="flex items-center gap-3 flex-wrap">
-            {/* Logo on mobile only (since sidebar is hidden on mobile) */}
+        {/* Top Sticky Header with Sede Switcher & Mobile Menu */}
+        <header className="sticky top-0 bg-surface/90 backdrop-blur-xl shadow-sm z-30 flex items-center justify-between px-3 sm:px-space-lg py-3 gap-2 border-b border-outline-variant/20">
+          <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+            {/* Hamburger menu for mobile admin */}
+            <button
+              onClick={() => setIsMobileMenuOpen(true)}
+              className="p-2 rounded-xl bg-surface-container text-on-surface hover:bg-surface-container-high md:hidden flex items-center justify-center transition-all shadow-xs"
+              aria-label="Abrir menú de administración"
+              title="Menú de administración"
+            >
+              <span className="material-symbols-outlined text-[22px]">menu</span>
+            </button>
+
+            {/* Logo on mobile only */}
             <img
               src={config.logoUrl || '/logo-maracumango.png'}
               alt={config.businessName || 'Maracumango'}
               className="h-8 w-auto md:hidden object-contain"
             />
+
             <div className="flex items-center gap-2 flex-wrap">
               <span className="font-label-lg text-label-lg text-on-surface-variant hidden sm:inline">Sede Admin:</span>
               <div className="flex items-center gap-2">
                 <select
                   value={adminSedeId}
                   onChange={(e) => setAdminSedeId(e.target.value)}
-                  className="font-label-lg text-label-md text-on-surface bg-surface-container px-3.5 py-1.5 rounded-full border border-outline-variant/30 focus:outline-none focus:border-primary font-semibold cursor-pointer"
+                  className="font-label-lg text-xs sm:text-label-md text-on-surface bg-surface-container px-3 py-1.5 rounded-full border border-outline-variant/30 focus:outline-none focus:border-primary font-semibold cursor-pointer max-w-[190px] sm:max-w-none truncate"
                 >
                   <option value="all">Todas las Sedes (Consolidado)</option>
-                  {SEDES.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.nombre}
-                    </option>
+                  {(sedes.length > 0 ? sedes : SEDES)
+                    .filter((s) => s.activa !== false && !s.nombre.toLowerCase().includes('covaleda') && s.id !== 'sede-1795151700722')
+                    .map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.nombre}
+                      </option>
                   ))}
                 </select>
 
@@ -337,7 +378,7 @@ export const AdminDashboardPage: React.FC = () => {
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-surface-container-high text-on-surface hover:bg-surface-container-highest transition-all text-xs font-semibold border border-outline-variant/30"
                 >
                   <span className="material-symbols-outlined text-[16px] text-primary">admin_panel_settings</span>
-                  <span>{currentUser.firstName || currentUser.name}</span>
+                  <span className="hidden sm:inline">{currentUser.firstName || currentUser.name}</span>
                 </button>
                 <button
                   onClick={logout}
@@ -354,11 +395,242 @@ export const AdminDashboardPage: React.FC = () => {
                 title="Cambiar rol de usuario"
               >
                 <span className="material-symbols-outlined text-[16px]">swap_horiz</span>
-                <span>Rol: Admin</span>
+                <span>Admin</span>
               </button>
             )}
           </div>
         </header>
+
+        {/* Mobile Horizontal Subtabs Quick Bar */}
+        <div className="md:hidden flex items-center gap-1.5 px-3 py-2 bg-surface-container-low border-b border-outline-variant/20 overflow-x-auto">
+          <button
+            onClick={() => setActiveAdminSubtab('dashboard')}
+            className={`whitespace-nowrap px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1 shrink-0 ${
+              activeAdminSubtab === 'dashboard'
+                ? 'bg-primary-container text-on-primary shadow-xs'
+                : 'bg-surface-container text-on-surface-variant hover:text-on-surface'
+            }`}
+          >
+            <span className="material-symbols-outlined text-[16px]">space_dashboard</span>
+            <span>Dashboard</span>
+          </button>
+
+          <button
+            onClick={() => setActiveAdminSubtab('pedidos')}
+            className={`whitespace-nowrap px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1 shrink-0 relative ${
+              activeAdminSubtab === 'pedidos'
+                ? 'bg-primary-container text-on-primary shadow-xs'
+                : 'bg-surface-container text-on-surface-variant hover:text-on-surface'
+            }`}
+          >
+            <span className="material-symbols-outlined text-[16px]">receipt_long</span>
+            <span>Pedidos</span>
+            {countPending > 0 && (
+              <span className="px-1.5 py-0.2 bg-rose-600 text-white rounded-full text-[10px] font-black">
+                {countPending}
+              </span>
+            )}
+          </button>
+
+          <button
+            onClick={() => setActiveAdminSubtab('productos')}
+            className={`whitespace-nowrap px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1 shrink-0 ${
+              activeAdminSubtab === 'productos'
+                ? 'bg-primary-container text-on-primary shadow-xs'
+                : 'bg-surface-container text-on-surface-variant hover:text-on-surface'
+            }`}
+          >
+            <span className="material-symbols-outlined text-[16px]">fastfood</span>
+            <span>Catálogo</span>
+          </button>
+
+          <button
+            onClick={() => setActiveAdminSubtab('categorias')}
+            className={`whitespace-nowrap px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1 shrink-0 ${
+              activeAdminSubtab === 'categorias'
+                ? 'bg-primary-container text-on-primary shadow-xs'
+                : 'bg-surface-container text-on-surface-variant hover:text-on-surface'
+            }`}
+          >
+            <span className="material-symbols-outlined text-[16px]">category</span>
+            <span>Categorías</span>
+          </button>
+
+          <button
+            onClick={() => setActiveAdminSubtab('personal')}
+            className={`whitespace-nowrap px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1 shrink-0 ${
+              activeAdminSubtab === 'personal'
+                ? 'bg-primary-container text-on-primary shadow-xs'
+                : 'bg-surface-container text-on-surface-variant hover:text-on-surface'
+            }`}
+          >
+            <span className="material-symbols-outlined text-[16px]">badge</span>
+            <span>Personal</span>
+          </button>
+
+          <button
+            onClick={() => setActiveAdminSubtab('configuracion')}
+            className={`whitespace-nowrap px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1 shrink-0 ${
+              activeAdminSubtab === 'configuracion'
+                ? 'bg-primary-container text-on-primary shadow-xs'
+                : 'bg-surface-container text-on-surface-variant hover:text-on-surface'
+            }`}
+          >
+            <span className="material-symbols-outlined text-[16px]">settings</span>
+            <span>Configuración</span>
+          </button>
+        </div>
+
+        {/* Mobile Slide-over Drawer Menu */}
+        {isMobileMenuOpen && (
+          <div className="fixed inset-0 z-50 md:hidden flex">
+            <div
+              className="fixed inset-0 bg-black/40 backdrop-blur-xs transition-opacity"
+              onClick={() => setIsMobileMenuOpen(false)}
+            />
+            <div className="relative w-4/5 max-w-xs bg-surface-container-low h-full shadow-2xl z-50 flex flex-col p-4">
+              <div className="flex items-center justify-between pb-3 mb-3 border-b border-outline-variant/20">
+                <div className="flex items-center gap-2">
+                  <img
+                    src={config.logoUrl || '/logo-maracumango.png'}
+                    alt="Logo"
+                    className="h-8 w-auto object-contain"
+                  />
+                  <span className="font-bold text-xs text-primary">Admin Maracumango</span>
+                </div>
+                <button
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className="p-1.5 rounded-xl hover:bg-surface-container text-on-surface-variant"
+                >
+                  <span className="material-symbols-outlined text-[20px]">close</span>
+                </button>
+              </div>
+
+              <nav className="flex-1 space-y-1.5 overflow-y-auto">
+                <button
+                  onClick={() => {
+                    setActiveAdminSubtab('dashboard');
+                    setIsMobileMenuOpen(false);
+                  }}
+                  className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-left font-semibold text-xs transition-all ${
+                    activeAdminSubtab === 'dashboard'
+                      ? 'bg-primary-container text-on-primary shadow-xs'
+                      : 'text-on-surface-variant hover:bg-surface-container'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <span className="material-symbols-outlined text-[20px]">space_dashboard</span>
+                    <span>Dashboard & Ventas</span>
+                  </div>
+                </button>
+
+                <button
+                  onClick={() => {
+                    setActiveAdminSubtab('pedidos');
+                    setIsMobileMenuOpen(false);
+                  }}
+                  className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-left font-semibold text-xs transition-all ${
+                    activeAdminSubtab === 'pedidos'
+                      ? 'bg-primary-container text-on-primary shadow-xs'
+                      : 'text-on-surface-variant hover:bg-surface-container'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <span className="material-symbols-outlined text-[20px]">receipt_long</span>
+                    <span>Gestión de Pedidos</span>
+                  </div>
+                  {countPending > 0 && (
+                    <span className="px-2 py-0.5 rounded-full bg-rose-600 text-white font-bold text-[10px]">
+                      {countPending} por aprobar
+                    </span>
+                  )}
+                </button>
+
+                <button
+                  onClick={() => {
+                    setActiveAdminSubtab('productos');
+                    setIsMobileMenuOpen(false);
+                  }}
+                  className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-left font-semibold text-xs transition-all ${
+                    activeAdminSubtab === 'productos'
+                      ? 'bg-primary-container text-on-primary shadow-xs'
+                      : 'text-on-surface-variant hover:bg-surface-container'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <span className="material-symbols-outlined text-[20px]">fastfood</span>
+                    <span>Catálogo / Productos</span>
+                  </div>
+                </button>
+
+                <button
+                  onClick={() => {
+                    setActiveAdminSubtab('categorias');
+                    setIsMobileMenuOpen(false);
+                  }}
+                  className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-left font-semibold text-xs transition-all ${
+                    activeAdminSubtab === 'categorias'
+                      ? 'bg-primary-container text-on-primary shadow-xs'
+                      : 'text-on-surface-variant hover:bg-surface-container'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <span className="material-symbols-outlined text-[20px]">category</span>
+                    <span>Categorías Menú</span>
+                  </div>
+                </button>
+
+                <button
+                  onClick={() => {
+                    setActiveAdminSubtab('personal');
+                    setIsMobileMenuOpen(false);
+                  }}
+                  className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-left font-semibold text-xs transition-all ${
+                    activeAdminSubtab === 'personal'
+                      ? 'bg-primary-container text-on-primary shadow-xs'
+                      : 'text-on-surface-variant hover:bg-surface-container'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <span className="material-symbols-outlined text-[20px]">badge</span>
+                    <span>Equipo & Personal</span>
+                  </div>
+                </button>
+
+                <button
+                  onClick={() => {
+                    setActiveAdminSubtab('configuracion');
+                    setIsMobileMenuOpen(false);
+                  }}
+                  className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-left font-semibold text-xs transition-all ${
+                    activeAdminSubtab === 'configuracion'
+                      ? 'bg-primary-container text-on-primary shadow-xs'
+                      : 'text-on-surface-variant hover:bg-surface-container'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <span className="material-symbols-outlined text-[20px]">settings</span>
+                    <span>Configuración Negocio</span>
+                  </div>
+                </button>
+              </nav>
+
+              <div className="pt-3 border-t border-outline-variant/20">
+                <button
+                  onClick={() => {
+                    setUserRole('customer');
+                    setActiveTab('inicio');
+                    setIsMobileMenuOpen(false);
+                  }}
+                  className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-on-surface-variant hover:text-primary transition-colors bg-surface-container"
+                >
+                  <span className="material-symbols-outlined text-[18px]">arrow_back</span>
+                  <span>Volver a la Tienda</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         <main className="p-space-lg space-y-space-lg">
           {/* Operational Header Bar - Cleaned per Point 22 */}
@@ -728,7 +1000,7 @@ export const AdminDashboardPage: React.FC = () => {
                                 ${order.total.toLocaleString('es-CO')}
                               </td>
                               <td className="p-4">
-                                {order.status === 'PENDING_ADMIN' || order.status === 'Pendiente' ? (
+                                {isPendingAdmin(order) ? (
                                   <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
                                     <button
                                       onClick={() => acceptOrder(order.id)}
@@ -751,12 +1023,12 @@ export const AdminDashboardPage: React.FC = () => {
                                       <span>Rechazar</span>
                                     </button>
                                   </div>
-                                ) : (order.status as string) === 'CANCELLED' || (order.status as string) === 'Cancelado' ? (
+                                ) : isCancelled(order) ? (
                                   <span className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-rose-100 text-rose-800 text-xs font-bold border border-rose-300">
                                     <span className="material-symbols-outlined text-[14px]">cancel</span>
                                     CANCELADO
                                   </span>
-                                ) : (order.status as string) === 'ACCEPTED' || (order.status as string) === 'Aceptado' ? (
+                                ) : isAccepted(order) ? (
                                   <div className="flex items-center gap-2">
                                     <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-500/15 text-blue-700 dark:text-blue-300 text-xs font-bold border border-blue-500/30">
                                       <span className="material-symbols-outlined text-[15px]">schedule</span>
@@ -774,7 +1046,7 @@ export const AdminDashboardPage: React.FC = () => {
                                       <span className="material-symbols-outlined text-[16px]">block</span>
                                     </button>
                                   </div>
-                                ) : (order.status as string) === 'PREPARING' || (order.status as string) === 'En preparación' ? (
+                                ) : isPreparing(order) ? (
                                   <div className="flex items-center gap-2">
                                     <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-500/15 text-purple-700 dark:text-purple-300 text-xs font-bold border border-purple-500/30">
                                       <span className="material-symbols-outlined text-[15px] animate-spin">autorenew</span>
@@ -792,7 +1064,7 @@ export const AdminDashboardPage: React.FC = () => {
                                       <span className="material-symbols-outlined text-[16px]">block</span>
                                     </button>
                                   </div>
-                                ) : (order.status as string) === 'READY' || (order.status as string) === 'Listo' ? (
+                                ) : isReady(order) ? (
                                   <div className="flex items-center gap-2">
                                     <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 text-xs font-bold border border-emerald-500/30">
                                       <span className="material-symbols-outlined text-[15px]">check_circle</span>
@@ -807,7 +1079,7 @@ export const AdminDashboardPage: React.FC = () => {
                                       <span>Entregar</span>
                                     </button>
                                   </div>
-                                ) : (order.status as string) === 'DELIVERED' || (order.status as string) === 'Entregado' ? (
+                                ) : isDelivered(order) ? (
                                   <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-surface-container text-on-surface-variant text-xs font-bold border border-outline-variant/30">
                                     <span className="material-symbols-outlined text-[15px] text-emerald-600">done_all</span>
                                     <span>Entregado</span>

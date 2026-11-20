@@ -172,7 +172,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setOrders(loadedOrders);
       setConfig(loadedConfig);
       if (loadedCats && loadedCats.length > 0) setCategories(loadedCats);
-      if (loadedSedes && loadedSedes.length > 0) setSedes(loadedSedes);
+      if (loadedSedes && loadedSedes.length > 0) {
+        const sanitizedSedes = loadedSedes.filter(
+          (s) => s.activa !== false && !s.nombre.toLowerCase().includes('covaleda') && s.id !== 'sede-1795151700722'
+        );
+        setSedes(sanitizedSedes.length > 0 ? sanitizedSedes : SEDES);
+      }
     } catch (e) {
       console.warn('Error reloading data from API:', e);
     }
@@ -380,6 +385,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const deleteBranch = async (id: string) => {
     const res = await apiService.deleteBranch(id, userRole);
     if (res.success) {
+      setSedes((prev) => prev.filter((s) => s.id !== id));
+      if (selectedSedeId === id || selectedSedeId === 'sede-1795151700722') {
+        setSelectedSedeId('sede-1');
+      }
+      if (workerSedeId === id || workerSedeId === 'sede-1795151700722') {
+        setWorkerSedeId('sede-1');
+      }
       await reloadAllData();
       return { success: true };
     }

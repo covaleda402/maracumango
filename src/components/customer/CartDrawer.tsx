@@ -332,7 +332,14 @@ ${
                         <span className="text-[11px] text-on-surface-variant">Neiva</span>
                       </label>
                       <div className="grid grid-cols-1 gap-2">
-                        {sedes.filter((s) => s.activa !== false).map((sede) => {
+                        {sedes
+                          .filter(
+                            (s) =>
+                              s.activa !== false &&
+                              !s.nombre.toLowerCase().includes('covaleda') &&
+                              s.id !== 'sede-1795151700722'
+                          )
+                          .map((sede) => {
                           const isSelected = selectedSedeId === sede.id;
                           return (
                             <button

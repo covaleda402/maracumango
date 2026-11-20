@@ -19,7 +19,9 @@ export const WorkerPanelPage: React.FC = () => {
 
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<string>('Todos');
 
-  const branchesList = sedes.length > 0 ? sedes : SEDES;
+  const branchesList = (sedes.length > 0 ? sedes : SEDES).filter(
+    (s) => s.activa !== false && !s.nombre.toLowerCase().includes('covaleda') && s.id !== 'sede-1795151700722'
+  );
   const activeSede = branchesList.find((s) => s.id === workerSedeId) || getSedeById(workerSedeId);
 
   // Business Rule:
@@ -183,6 +185,15 @@ export const WorkerPanelPage: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-space-xs">
+            <button
+              onClick={handleReturnToStore}
+              className="md:hidden flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-surface-container text-on-surface hover:text-primary transition-colors text-xs font-semibold border border-outline-variant/30"
+              title="Volver a la tienda"
+            >
+              <span className="material-symbols-outlined text-[16px]">storefront</span>
+              <span className="hidden sm:inline">Tienda</span>
+            </button>
+
             <a
               href={`https://wa.me/57${activeWhatsapp}`}
               target="_blank"

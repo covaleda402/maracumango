@@ -4,7 +4,9 @@ import { SEDES } from '../../data/sedes';
 
 export const SedesCard: React.FC = () => {
   const { sedes } = useApp();
-  const branchesList = sedes && sedes.length > 0 ? sedes : SEDES;
+  const branchesList = (sedes && sedes.length > 0 ? sedes : SEDES).filter(
+    (s) => s.activa !== false && !s.nombre.toLowerCase().includes('covaleda') && s.id !== 'sede-1795151700722'
+  );
 
   return (
     <div className="w-full bg-surface-container-lowest rounded-3xl p-space-lg shadow-[0_4px_24px_-2px_rgba(106,191,0,0.10)] border border-outline-variant/20">

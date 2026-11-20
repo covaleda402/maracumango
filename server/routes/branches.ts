@@ -31,7 +31,7 @@ router.get('/', async (_req: Request, res: Response) => {
         ) AS shifts
        FROM branches b
        LEFT JOIN shifts s ON s.branch_id = b.id AND s.is_active = TRUE
-       WHERE b.is_active = TRUE
+       WHERE b.is_active = TRUE AND LOWER(b.name) NOT LIKE '%covaleda%' AND b.id != 'sede-1795151700722'
        GROUP BY b.id
        ORDER BY b.id ASC`
     );
@@ -276,10 +276,10 @@ router.delete('/:id', requireAdmin, async (req: Request, res: Response) => {
 
   try {
     // 1. Unlink any users assigned to this branch
-    await query('UPDATE users SET branch_id = NULL WHERE branch_id = $1', [id]);
+    await query("UPDATE users SET branch_id = 'sede-1' WHERE branch_id = $1", [id]);
 
-    // 2. Unlink any orders associated with this branch (preserves financial totals)
-    await query('UPDATE orders SET branch_id = NULL WHERE branch_id = $1', [id]);
+    // 2. Reassign orders to sede-1 (preserves history without violating NOT NULL constraints)
+    await query("UPDATE orders SET branch_id = 'sede-1' WHERE branch_id = $1", [id]);
 
     // 3. Remove operational shifts for this branch
     await query('DELETE FROM shifts WHERE branch_id = $1', [id]);
