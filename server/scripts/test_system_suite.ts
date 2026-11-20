@@ -885,6 +885,188 @@ async function startSuite() {
       }
     }, baseUrl);
 
+    // ====================================================================
+    // SUITE 11: GESTIÓN COMPLETA DE CATÁLOGO (PRODUCTOS, CATEGORÍAS, AJUSTES)
+    // ====================================================================
+    console.log('\n--- 🏷️ SUITE 11: GESTIÓN INTEGRAL DE CATÁLOGO Y CONFIGURACIÓN ---');
+
+    let createdCatId = '';
+    await runTest('Catálogo', '11.1 Creación de nueva categoría (Admin only)', async (url) => {
+      const res = await fetch(`${url}/categories`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${adminToken}`,
+        },
+        body: JSON.stringify({ name: 'Edición Limitada 2026', description: 'Temporada especial' }),
+      });
+      if (!res.ok) throw new Error(`Fallo creando categoría: ${res.status}`);
+      const cat = await res.json();
+      createdCatId = cat.id;
+      if (!createdCatId) throw new Error('ID de categoría no retornado.');
+    }, baseUrl);
+
+    await runTest('Catálogo', '11.2 Actualización de categoría existente', async (url) => {
+      const res = await fetch(`${url}/categories/${createdCatId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${adminToken}`,
+        },
+        body: JSON.stringify({ name: 'Edición Verano 2026' }),
+      });
+      if (!res.ok) throw new Error(`Fallo actualizando categoría: ${res.status}`);
+      const cat = await res.json();
+      if (cat.name !== 'Edición Verano 2026') throw new Error(`Nombre no actualizado: ${cat.name}`);
+    }, baseUrl);
+
+    let createdProdId = '';
+    await runTest('Catálogo', '11.3 Creación de nuevo producto con ingredientes', async (url) => {
+      const res = await fetch(`${url}/products`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${adminToken}`,
+        },
+        body: JSON.stringify({
+          name: 'Granizado Supremo Test',
+          categoryId: createdCatId,
+          price: 18000,
+          description: 'Delicioso granizado artesanal con maracuyá y mango',
+          ingredients: ['Pulpa de maracuyá', 'Mango picado', 'Leche condensada'],
+        }),
+      });
+      if (!res.ok) throw new Error(`Fallo creando producto: ${res.status}`);
+      const prod = await res.json();
+      createdProdId = prod.id;
+      if (!createdProdId) throw new Error('ID de producto no retornado.');
+    }, baseUrl);
+
+    await runTest('Catálogo', '11.4 Validación rechaza producto con precio inválido o nombre vacío', async (url) => {
+      const res = await fetch(`${url}/products`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${adminToken}`,
+        },
+        body: JSON.stringify({
+          name: '',
+          price: -5000,
+        }),
+      });
+      if (res.status !== 400) {
+        throw new Error(`Se esperaba 400 por validación, se obtuvo: ${res.status}`);
+      }
+    }, baseUrl);
+
+    await runTest('Catálogo', '11.5 Actualización de producto existente', async (url) => {
+      const res = await fetch(`${url}/products/${createdProdId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${adminToken}`,
+        },
+        body: JSON.stringify({
+          name: 'Granizado Supremo Test Modificado',
+          price: 19500,
+        }),
+      });
+      if (!res.ok) throw new Error(`Fallo actualizando producto: ${res.status}`);
+      const prod = await res.json();
+      if (prod.price !== 19500) throw new Error(`Precio no actualizado: ${prod.price}`);
+    }, baseUrl);
+
+    await runTest('Catálogo', '11.6 Alternar estado activo del producto (Toggle)', async (url) => {
+      const res = await fetch(`${url}/products/${createdProdId}/toggle`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${adminToken}` },
+      });
+      if (!res.ok) throw new Error(`Fallo en toggle: ${res.status}`);
+      const data = await res.json();
+      if (data.active === undefined) throw new Error('Estado active no devuelto');
+    }, baseUrl);
+
+    await runTest('Catálogo', '11.7 Eliminación segura de producto', async (url) => {
+      const res = await fetch(`${url}/products/${createdProdId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${adminToken}` },
+      });
+      if (!res.ok) throw new Error(`Fallo eliminando producto: ${res.status}`);
+    }, baseUrl);
+
+    await runTest('Catálogo', '11.8 Eliminación de categoría', async (url) => {
+      const res = await fetch(`${url}/categories/${createdCatId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${adminToken}` },
+      });
+      if (!res.ok) throw new Error(`Fallo eliminando categoría: ${res.status}`);
+    }, baseUrl);
+
+    await runTest('Catálogo', '11.9 Creación de insumo / ingrediente base', async (url) => {
+      const res = await fetch(`${url}/ingredients`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${adminToken}`,
+        },
+        body: JSON.stringify({ name: 'Chorreado de Mora Test', description: 'Topping de mora' }),
+      });
+      if (!res.ok) throw new Error(`Fallo creando ingrediente: ${res.status}`);
+    }, baseUrl);
+
+    await runTest('Configuración', '11.10 Actualización de identidad de negocio y turnos operativos', async (url) => {
+      const res = await fetch(`${url}/settings`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${adminToken}`,
+        },
+        body: JSON.stringify({
+          businessName: 'Maracumango Neiva',
+          city: 'Neiva, Huila',
+          shiftInfo: 'Jornada Continua 10:00 AM - 10:00 PM',
+        }),
+      });
+      if (!res.ok) throw new Error(`Fallo actualizando settings: ${res.status}`);
+      const data = await res.json();
+      if (!data.settings || data.settings.businessName !== 'Maracumango Neiva') {
+        throw new Error(`Datos de settings no actualizados: ${JSON.stringify(data)}`);
+      }
+    }, baseUrl);
+
+    // ====================================================================
+    // SUITE 12: POLÍTICAS DE CONSERVACIÓN Y PERFIL DE CLIENTE
+    // ====================================================================
+    console.log('\n--- 🧹 SUITE 12: POLÍTICAS DE RETENCIÓN Y PERFILES ---');
+
+    await runTest('Mantenimiento', '12.1 Ejecución de política de depuración y retención de pedidos', async () => {
+      const { runOrderRetentionCleanup } = await import('../services/orderRetention');
+      const stats = await runOrderRetentionCleanup();
+      if (stats.cleanedCancelled === undefined || stats.cleanedDelivered === undefined) {
+        throw new Error(`Resultado de retención inválido: ${JSON.stringify(stats)}`);
+      }
+    }, baseUrl);
+
+    await runTest('Perfil', '12.2 Actualización de datos del perfil del cliente autenticado', async (url) => {
+      const res = await fetch(`${url}/auth/profile`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${customerToken}`,
+        },
+        body: JSON.stringify({
+          firstName: 'Jose Esneider Actualizado',
+          phone: '3183000424',
+          defaultAddress: 'Calle 32 # 10W-09 Barrio El Triángulo',
+        }),
+      });
+      if (!res.ok) throw new Error(`Fallo actualizando perfil: ${res.status}`);
+      const data = await res.json();
+      if (!data.user || data.user.phone !== '3183000424') {
+        throw new Error(`Perfil no actualizado: ${JSON.stringify(data)}`);
+      }
+    }, baseUrl);
+
   } finally {
     server.close();
   }

@@ -6,6 +6,11 @@ import { INITIAL_PRODUCTS, PRODUCT_INGREDIENTS } from '../../src/data/mockData';
 
 const router = Router();
 
+let devFallbackProducts: any[] = INITIAL_PRODUCTS.map((p) => ({
+  ...p,
+  ingredients: PRODUCT_INGREDIENTS[p.id] || [],
+}));
+
 // Helper to format a single product row with ingredients safely
 const formatProductRow = (p: any, categoryName?: string, ingredientsList?: string[]) => {
   let finalIngs: string[] = [];
@@ -41,11 +46,7 @@ router.get('/', async (req: Request, res: Response) => {
   const activeOnly = req.query.activeOnly === 'true';
 
   if (!isDatabaseConfigured()) {
-    const productsWithIngs = INITIAL_PRODUCTS.map((p) => ({
-      ...p,
-      ingredients: PRODUCT_INGREDIENTS[p.id] || [],
-    }));
-    return res.json(activeOnly ? productsWithIngs.filter((p) => p.active) : productsWithIngs);
+    return res.json(activeOnly ? devFallbackProducts.filter((p) => p.active) : devFallbackProducts);
   }
 
   try {
@@ -122,7 +123,20 @@ router.post('/', requireAdmin, validateProductInput, async (req: Request, res: R
   } = req.body;
 
   if (!isDatabaseConfigured()) {
-    return res.status(503).json({ error: 'Base de datos no configurada.' });
+    const newProd = {
+      id: `prod-${Date.now()}`,
+      name: name.trim(),
+      category: category || 'Granizados',
+      categoryId: categoryId || 'cat-1',
+      price: Number(price),
+      description: description ? description.trim() : '',
+      image: imageUrl || image || '/images/granizado.png',
+      popular: !!(isPopular ?? popular),
+      active: isActive !== undefined ? !!isActive : (active !== undefined ? !!active : true),
+      ingredients: Array.isArray(ingredients) ? ingredients : [],
+    };
+    devFallbackProducts.push(newProd);
+    return res.status(201).json(newProd);
   }
 
   const client = await getClient();
@@ -221,7 +235,22 @@ router.put('/:id', requireAdmin, async (req: Request, res: Response) => {
   } = req.body;
 
   if (!isDatabaseConfigured()) {
-    return res.status(503).json({ error: 'Base de datos no configurada.' });
+    const idx = devFallbackProducts.findIndex((p) => p.id === id);
+    if (idx === -1) return res.status(404).json({ error: 'Producto no encontrado.' });
+    devFallbackProducts[idx] = {
+      ...devFallbackProducts[idx],
+      ...(name !== undefined && { name: String(name).trim() }),
+      ...(price !== undefined && { price: Number(price) }),
+      ...(description !== undefined && { description: String(description).trim() }),
+      ...(imageUrl !== undefined && { image: String(imageUrl) }),
+      ...(image !== undefined && { image: String(image) }),
+      ...(isPopular !== undefined && { popular: !!isPopular }),
+      ...(popular !== undefined && { popular: !!popular }),
+      ...(isActive !== undefined && { active: !!isActive }),
+      ...(active !== undefined && { active: !!active }),
+      ...(ingredients !== undefined && { ingredients }),
+    };
+    return res.json(devFallbackProducts[idx]);
   }
 
   const client = await getClient();
@@ -323,7 +352,10 @@ router.patch('/:id/toggle', requireAdmin, async (req: Request, res: Response) =>
   const { id } = req.params;
 
   if (!isDatabaseConfigured()) {
-    return res.status(503).json({ error: 'Base de datos no configurada.' });
+    const idx = devFallbackProducts.findIndex((p) => p.id === id);
+    if (idx === -1) return res.status(404).json({ error: 'Producto no encontrado.' });
+    devFallbackProducts[idx].active = !devFallbackProducts[idx].active;
+    return res.json({ id, name: devFallbackProducts[idx].name, active: devFallbackProducts[idx].active });
   }
 
   try {
@@ -351,7 +383,11 @@ router.delete('/:id', requireAdmin, async (req: Request, res: Response) => {
   const { id } = req.params;
 
   if (!isDatabaseConfigured()) {
-    return res.status(503).json({ error: 'Base de datos no configurada.' });
+    const idx = devFallbackProducts.findIndex((p) => p.id === id);
+    if (idx === -1) return res.status(404).json({ error: 'Producto no encontrado.' });
+    const prodName = devFallbackProducts[idx].name;
+    devFallbackProducts.splice(idx, 1);
+    return res.json({ message: `Producto "${prodName}" eliminado exitosamente.`, deleted: true });
   }
 
   try {

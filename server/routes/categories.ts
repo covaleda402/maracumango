@@ -5,6 +5,8 @@ import { INITIAL_CATEGORIES } from '../../src/services/storageService';
 
 const router = Router();
 
+let devFallbackCategories: any[] = [...INITIAL_CATEGORIES];
+
 const formatCategory = (c: any) => ({
   id: c.id,
   name: c.name,
@@ -18,7 +20,7 @@ router.get('/', async (req: Request, res: Response) => {
   const activeOnly = req.query.activeOnly === 'true';
 
   if (!isDatabaseConfigured()) {
-    return res.json(activeOnly ? INITIAL_CATEGORIES.filter((c) => c.active) : INITIAL_CATEGORIES);
+    return res.json(activeOnly ? devFallbackCategories.filter((c) => c.active) : devFallbackCategories);
   }
 
   try {
@@ -44,7 +46,15 @@ router.post('/', requireAdmin, async (req: Request, res: Response) => {
   }
 
   if (!isDatabaseConfigured()) {
-    return res.status(503).json({ error: 'Base de datos no configurada.' });
+    const newCat = {
+      id: `cat-${Date.now()}`,
+      name: name.trim(),
+      description: description ? description.trim() : '',
+      order: order || 0,
+      active: true,
+    };
+    devFallbackCategories.push(newCat);
+    return res.status(201).json(newCat);
   }
 
   try {
@@ -70,7 +80,18 @@ router.put('/:id', requireAdmin, async (req: Request, res: Response) => {
   const { name, description, order, active } = req.body;
 
   if (!isDatabaseConfigured()) {
-    return res.status(503).json({ error: 'Base de datos no configurada.' });
+    const idx = devFallbackCategories.findIndex((c) => c.id === id);
+    if (idx === -1) {
+      return res.status(404).json({ error: 'Categoría no encontrada.' });
+    }
+    devFallbackCategories[idx] = {
+      ...devFallbackCategories[idx],
+      ...(name !== undefined && { name: String(name).trim() }),
+      ...(description !== undefined && { description: String(description).trim() }),
+      ...(order !== undefined && { order: Number(order) }),
+      ...(active !== undefined && { active: !!active }),
+    };
+    return res.json(devFallbackCategories[idx]);
   }
 
   try {
@@ -106,7 +127,13 @@ router.delete('/:id', requireAdmin, async (req: Request, res: Response) => {
   const { id } = req.params;
 
   if (!isDatabaseConfigured()) {
-    return res.status(503).json({ error: 'Base de datos no configurada.' });
+    const idx = devFallbackCategories.findIndex((c) => c.id === id);
+    if (idx === -1) {
+      return res.status(404).json({ error: 'Categoría no encontrada.' });
+    }
+    const catName = devFallbackCategories[idx].name;
+    devFallbackCategories.splice(idx, 1);
+    return res.json({ message: `Categoría "${catName}" eliminada exitosamente.` });
   }
 
   try {

@@ -5,17 +5,19 @@ import { DEFAULT_BUSINESS_CONFIG } from '../../src/data/mockData';
 
 const router = Router();
 
+const devFallbackSettings: any = {
+  businessName: DEFAULT_BUSINESS_CONFIG.businessName,
+  logoUrl: '/logo-maracumango.png',
+  mainAddress: DEFAULT_BUSINESS_CONFIG.mainAddress,
+  city: DEFAULT_BUSINESS_CONFIG.city,
+  whatsappNumber: DEFAULT_BUSINESS_CONFIG.whatsappNumber,
+  shiftInfo: DEFAULT_BUSINESS_CONFIG.shiftInfo,
+};
+
 // GET /api/settings — Get business visual identity & configuration
 router.get('/', async (_req: Request, res: Response) => {
   if (!isDatabaseConfigured()) {
-    return res.json({
-      businessName: DEFAULT_BUSINESS_CONFIG.businessName,
-      logoUrl: '/logo-maracumango.png',
-      mainAddress: DEFAULT_BUSINESS_CONFIG.mainAddress,
-      city: DEFAULT_BUSINESS_CONFIG.city,
-      whatsappNumber: DEFAULT_BUSINESS_CONFIG.whatsappNumber,
-      shiftInfo: DEFAULT_BUSINESS_CONFIG.shiftInfo,
-    });
+    return res.json(devFallbackSettings);
   }
 
   try {
@@ -50,7 +52,16 @@ router.put('/', requireAdmin, async (req: Request, res: Response) => {
   const { businessName, logoUrl, mainAddress, city, whatsappNumber, shiftInfo } = req.body;
 
   if (!isDatabaseConfigured()) {
-    return res.status(503).json({ error: 'Base de datos no configurada.' });
+    devFallbackSettings.businessName = businessName !== undefined ? businessName : devFallbackSettings.businessName;
+    devFallbackSettings.logoUrl = logoUrl !== undefined ? logoUrl : devFallbackSettings.logoUrl;
+    devFallbackSettings.mainAddress = mainAddress !== undefined ? mainAddress : devFallbackSettings.mainAddress;
+    devFallbackSettings.city = city !== undefined ? city : devFallbackSettings.city;
+    devFallbackSettings.whatsappNumber = whatsappNumber !== undefined ? whatsappNumber : devFallbackSettings.whatsappNumber;
+    devFallbackSettings.shiftInfo = shiftInfo !== undefined ? shiftInfo : devFallbackSettings.shiftInfo;
+    return res.json({
+      message: 'Configuración de identidad visual y negocio actualizada con éxito (Modo local).',
+      settings: devFallbackSettings,
+    });
   }
 
   try {

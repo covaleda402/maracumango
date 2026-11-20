@@ -662,6 +662,7 @@ var INITIAL_CATEGORIES = [
 
 // server/routes/categories.ts
 var router2 = Router2();
+var devFallbackCategories = [...INITIAL_CATEGORIES];
 var formatCategory = (c) => ({
   id: c.id,
   name: c.name,
@@ -672,7 +673,7 @@ var formatCategory = (c) => ({
 router2.get("/", async (req, res) => {
   const activeOnly = req.query.activeOnly === "true";
   if (!isDatabaseConfigured()) {
-    return res.json(activeOnly ? INITIAL_CATEGORIES.filter((c) => c.active) : INITIAL_CATEGORIES);
+    return res.json(activeOnly ? devFallbackCategories.filter((c) => c.active) : devFallbackCategories);
   }
   try {
     const whereClause = activeOnly ? "WHERE is_active = TRUE" : "";
@@ -694,7 +695,15 @@ router2.post("/", requireAdmin, async (req, res) => {
     return res.status(400).json({ error: "El nombre de la categor\xEDa es obligatorio." });
   }
   if (!isDatabaseConfigured()) {
-    return res.status(503).json({ error: "Base de datos no configurada." });
+    const newCat = {
+      id: `cat-${Date.now()}`,
+      name: name.trim(),
+      description: description ? description.trim() : "",
+      order: order || 0,
+      active: true
+    };
+    devFallbackCategories.push(newCat);
+    return res.status(201).json(newCat);
   }
   try {
     const id = `cat-${Date.now()}`;
@@ -716,7 +725,18 @@ router2.put("/:id", requireAdmin, async (req, res) => {
   const { id } = req.params;
   const { name, description, order, active } = req.body;
   if (!isDatabaseConfigured()) {
-    return res.status(503).json({ error: "Base de datos no configurada." });
+    const idx = devFallbackCategories.findIndex((c) => c.id === id);
+    if (idx === -1) {
+      return res.status(404).json({ error: "Categor\xEDa no encontrada." });
+    }
+    devFallbackCategories[idx] = {
+      ...devFallbackCategories[idx],
+      ...name !== void 0 && { name: String(name).trim() },
+      ...description !== void 0 && { description: String(description).trim() },
+      ...order !== void 0 && { order: Number(order) },
+      ...active !== void 0 && { active: !!active }
+    };
+    return res.json(devFallbackCategories[idx]);
   }
   try {
     const cleanName = name !== void 0 && name !== null ? String(name).trim() : null;
@@ -746,7 +766,13 @@ router2.put("/:id", requireAdmin, async (req, res) => {
 router2.delete("/:id", requireAdmin, async (req, res) => {
   const { id } = req.params;
   if (!isDatabaseConfigured()) {
-    return res.status(503).json({ error: "Base de datos no configurada." });
+    const idx = devFallbackCategories.findIndex((c) => c.id === id);
+    if (idx === -1) {
+      return res.status(404).json({ error: "Categor\xEDa no encontrada." });
+    }
+    const catName = devFallbackCategories[idx].name;
+    devFallbackCategories.splice(idx, 1);
+    return res.json({ message: `Categor\xEDa "${catName}" eliminada exitosamente.` });
   }
   try {
     const catCheck = await query("SELECT id, name FROM categories WHERE id = $1", [id]);
@@ -810,7 +836,7 @@ router3.post("/", requireAdmin, async (req, res) => {
     return res.status(400).json({ error: "El nombre del ingrediente es obligatorio." });
   }
   if (!isDatabaseConfigured()) {
-    return res.status(503).json({ error: "Base de datos no configurada." });
+    return res.status(201).json({ id: `ing-${Date.now()}`, name: name.trim(), description: description || null, active: true });
   }
   try {
     const id = `ing-${Date.now()}`;
@@ -919,6 +945,10 @@ var validateProductInput = (req, res, next) => {
 
 // server/routes/products.ts
 var router4 = Router4();
+var devFallbackProducts = INITIAL_PRODUCTS.map((p) => ({
+  ...p,
+  ingredients: PRODUCT_INGREDIENTS[p.id] || []
+}));
 var formatProductRow = (p, categoryName, ingredientsList) => {
   let finalIngs = [];
   if (Array.isArray(ingredientsList)) {
@@ -949,11 +979,7 @@ var formatProductRow = (p, categoryName, ingredientsList) => {
 router4.get("/", async (req, res) => {
   const activeOnly = req.query.activeOnly === "true";
   if (!isDatabaseConfigured()) {
-    const productsWithIngs = INITIAL_PRODUCTS.map((p) => ({
-      ...p,
-      ingredients: PRODUCT_INGREDIENTS[p.id] || []
-    }));
-    return res.json(activeOnly ? productsWithIngs.filter((p) => p.active) : productsWithIngs);
+    return res.json(activeOnly ? devFallbackProducts.filter((p) => p.active) : devFallbackProducts);
   }
   try {
     const whereClause = activeOnly ? "WHERE p.is_active = TRUE" : "";
@@ -1022,7 +1048,20 @@ router4.post("/", requireAdmin, validateProductInput, async (req, res) => {
     ingredients
   } = req.body;
   if (!isDatabaseConfigured()) {
-    return res.status(503).json({ error: "Base de datos no configurada." });
+    const newProd = {
+      id: `prod-${Date.now()}`,
+      name: name.trim(),
+      category: category || "Granizados",
+      categoryId: categoryId || "cat-1",
+      price: Number(price),
+      description: description ? description.trim() : "",
+      image: imageUrl || image || "/images/granizado.png",
+      popular: !!(isPopular ?? popular),
+      active: isActive !== void 0 ? !!isActive : active !== void 0 ? !!active : true,
+      ingredients: Array.isArray(ingredients) ? ingredients : []
+    };
+    devFallbackProducts.push(newProd);
+    return res.status(201).json(newProd);
   }
   const client = await getClient();
   try {
@@ -1109,7 +1148,22 @@ router4.put("/:id", requireAdmin, async (req, res) => {
     ingredients
   } = req.body;
   if (!isDatabaseConfigured()) {
-    return res.status(503).json({ error: "Base de datos no configurada." });
+    const idx = devFallbackProducts.findIndex((p) => p.id === id);
+    if (idx === -1) return res.status(404).json({ error: "Producto no encontrado." });
+    devFallbackProducts[idx] = {
+      ...devFallbackProducts[idx],
+      ...name !== void 0 && { name: String(name).trim() },
+      ...price !== void 0 && { price: Number(price) },
+      ...description !== void 0 && { description: String(description).trim() },
+      ...imageUrl !== void 0 && { image: String(imageUrl) },
+      ...image !== void 0 && { image: String(image) },
+      ...isPopular !== void 0 && { popular: !!isPopular },
+      ...popular !== void 0 && { popular: !!popular },
+      ...isActive !== void 0 && { active: !!isActive },
+      ...active !== void 0 && { active: !!active },
+      ...ingredients !== void 0 && { ingredients }
+    };
+    return res.json(devFallbackProducts[idx]);
   }
   const client = await getClient();
   try {
@@ -1199,7 +1253,10 @@ router4.put("/:id", requireAdmin, async (req, res) => {
 router4.patch("/:id/toggle", requireAdmin, async (req, res) => {
   const { id } = req.params;
   if (!isDatabaseConfigured()) {
-    return res.status(503).json({ error: "Base de datos no configurada." });
+    const idx = devFallbackProducts.findIndex((p) => p.id === id);
+    if (idx === -1) return res.status(404).json({ error: "Producto no encontrado." });
+    devFallbackProducts[idx].active = !devFallbackProducts[idx].active;
+    return res.json({ id, name: devFallbackProducts[idx].name, active: devFallbackProducts[idx].active });
   }
   try {
     const result = await query(
@@ -1221,7 +1278,11 @@ router4.patch("/:id/toggle", requireAdmin, async (req, res) => {
 router4.delete("/:id", requireAdmin, async (req, res) => {
   const { id } = req.params;
   if (!isDatabaseConfigured()) {
-    return res.status(503).json({ error: "Base de datos no configurada." });
+    const idx = devFallbackProducts.findIndex((p) => p.id === id);
+    if (idx === -1) return res.status(404).json({ error: "Producto no encontrado." });
+    const prodName = devFallbackProducts[idx].name;
+    devFallbackProducts.splice(idx, 1);
+    return res.json({ message: `Producto "${prodName}" eliminado exitosamente.`, deleted: true });
   }
   try {
     const prodCheck = await query("SELECT id, name FROM products WHERE id = $1", [id]);
@@ -1970,16 +2031,17 @@ var orders_default = router5;
 // server/routes/settings.ts
 import { Router as Router6 } from "express";
 var router6 = Router6();
+var devFallbackSettings = {
+  businessName: DEFAULT_BUSINESS_CONFIG.businessName,
+  logoUrl: "/logo-maracumango.png",
+  mainAddress: DEFAULT_BUSINESS_CONFIG.mainAddress,
+  city: DEFAULT_BUSINESS_CONFIG.city,
+  whatsappNumber: DEFAULT_BUSINESS_CONFIG.whatsappNumber,
+  shiftInfo: DEFAULT_BUSINESS_CONFIG.shiftInfo
+};
 router6.get("/", async (_req, res) => {
   if (!isDatabaseConfigured()) {
-    return res.json({
-      businessName: DEFAULT_BUSINESS_CONFIG.businessName,
-      logoUrl: "/logo-maracumango.png",
-      mainAddress: DEFAULT_BUSINESS_CONFIG.mainAddress,
-      city: DEFAULT_BUSINESS_CONFIG.city,
-      whatsappNumber: DEFAULT_BUSINESS_CONFIG.whatsappNumber,
-      shiftInfo: DEFAULT_BUSINESS_CONFIG.shiftInfo
-    });
+    return res.json(devFallbackSettings);
   }
   try {
     const result = await query("SELECT * FROM business_settings WHERE id = $1", ["default"]);
@@ -2009,7 +2071,16 @@ router6.get("/", async (_req, res) => {
 router6.put("/", requireAdmin, async (req, res) => {
   const { businessName, logoUrl, mainAddress, city, whatsappNumber, shiftInfo } = req.body;
   if (!isDatabaseConfigured()) {
-    return res.status(503).json({ error: "Base de datos no configurada." });
+    devFallbackSettings.businessName = businessName !== void 0 ? businessName : devFallbackSettings.businessName;
+    devFallbackSettings.logoUrl = logoUrl !== void 0 ? logoUrl : devFallbackSettings.logoUrl;
+    devFallbackSettings.mainAddress = mainAddress !== void 0 ? mainAddress : devFallbackSettings.mainAddress;
+    devFallbackSettings.city = city !== void 0 ? city : devFallbackSettings.city;
+    devFallbackSettings.whatsappNumber = whatsappNumber !== void 0 ? whatsappNumber : devFallbackSettings.whatsappNumber;
+    devFallbackSettings.shiftInfo = shiftInfo !== void 0 ? shiftInfo : devFallbackSettings.shiftInfo;
+    return res.json({
+      message: "Configuraci\xF3n de identidad visual y negocio actualizada con \xE9xito (Modo local).",
+      settings: devFallbackSettings
+    });
   }
   try {
     const result = await query(
