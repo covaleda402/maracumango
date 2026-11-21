@@ -216,6 +216,15 @@ El proyecto está estructurado y optimizado para desplegarse fácilmente en **Ve
 
 ---
 
+## 👥 Desarrolladores & Créditos
+
+Este proyecto fue concebido, diseñado y desarrollado por:
+
+* **Jose Esneider Covaleda Hortua**
+* **Edwin Alejandro Esquivel Bahamon**
+
+---
+
 ## 📄 Licencia
 
 Este proyecto fue desarrollado para **Maracumango Neiva**. Todos los derechos reservados.

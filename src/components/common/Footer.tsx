@@ -120,7 +120,12 @@ export const Footer: React.FC = () => {
           <p className="font-label-sm text-xs">Sistema de Gestión & Ventas</p>
         </div>
       </div>
+
+      <div className="max-w-7xl mx-auto px-margin-mobile lg:px-margin-desktop mt-3 pt-3 border-t border-outline-variant/10 text-center">
+        <p className="text-[12px] text-on-surface-variant">
+          Desarrollado por <span className="font-semibold text-on-surface">Jose Esneider Covaleda Hortua</span> y <span className="font-semibold text-on-surface">Edwin Alejandro Esquivel Bahamon</span>
+        </p>
+      </div>
     </footer>
   );
 };
-

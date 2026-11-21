@@ -200,4 +200,4 @@ No. El sistema cuenta con control de concurrencia atómica. Cuando el primer tra
 Los datos personales (nombre, teléfono y dirección) se transmiten bajo protocolos cifrados HTTPS/SSL, las contraseñas se almacenan mediante hashing criptográfico `bcrypt` y no son compartidos con terceros en cumplimiento estricto de la Ley 1581 de 2012 de Colombia.
 
 ---
-*Manual elaborado para Maracumango — Neiva, Huila.*
+*Sistema y Manual desarrollados para Maracumango Neiva por **Jose Esneider Covaleda Hortua** y **Edwin Alejandro Esquivel Bahamon**.*
