@@ -10,7 +10,7 @@ interface Message {
 }
 
 export const VirtualAdvisor: React.FC = () => {
-  const { cart, sedes, userRole, config } = useApp();
+  const { cart, sedes, products, userRole, config } = useApp();
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -25,6 +25,13 @@ export const VirtualAdvisor: React.FC = () => {
   const activeSedes = sedes.filter(
     (s) => !s.nombre.toLowerCase().includes('covaleda') && s.id !== 'sede-1795151700722'
   );
+
+  // Obtiene en tiempo real los productos que el Administrador marcó como "Popular ★"
+  const popularProducts = products.filter((p) => p.active !== false && p.popular);
+  const recommendedList =
+    popularProducts.length > 0
+      ? popularProducts
+      : products.filter((p) => p.active !== false).slice(0, 3);
 
   const totalCartItems = cart.reduce((sum, item) => sum + item.quantity, 0);
 
@@ -73,7 +80,13 @@ export const VirtualAdvisor: React.FC = () => {
       id: 'recomendados',
       question: '¿Cuáles son los productos más pedidos?',
       answer:
-        '🥭 Los favoritos de nuestros clientes son:\n\n• Granizado Tropical Maracumango (maracuyá y mango biche con tajín)\n• Michelada Artesanal escarchada\n• Helados Artesanales de pura fruta natural\n\n¡Puedes agregarlos directamente desde el menú!',
+        '🥭 Los productos más pedidos y destacados por nuestra administración en Neiva son:\n\n' +
+        (recommendedList.length > 0
+          ? recommendedList
+              .map((p) => `• ${p.name} (${p.price.toLocaleString('es-CO')}) — ${p.category}`)
+              .join('\n')
+          : '• Granizado Tropical Maracumango\n• Michelada Artesanal\n• Helado Artesanal') +
+        '\n\n¡Puedes seleccionarlos y agregarlos directamente desde el menú principal!',
     },
     {
       id: 'humano',
