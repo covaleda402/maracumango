@@ -213,7 +213,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       return [...prev, { product, quantity }];
     });
-    setIsCartOpen(true);
+    // No abrimos el carrito automáticamente para no interrumpir la navegación del cliente
   };
 
   const updateCartQuantity = (productId: string, delta: number) => {

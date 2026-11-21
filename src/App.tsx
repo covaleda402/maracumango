@@ -6,6 +6,7 @@ import { RoleModal } from './components/common/RoleModal';
 import { TermsModal } from './components/common/TermsModal';
 import { CartDrawer } from './components/customer/CartDrawer';
 import { FloatingCartButton } from './components/customer/FloatingCartButton';
+import { VirtualAdvisor } from './components/customer/VirtualAdvisor';
 import { CustomerStorePage } from './pages/CustomerStorePage';
 import { WorkerPanelPage } from './pages/WorkerPanelPage';
 import { AdminDashboardPage } from './pages/AdminDashboardPage';
@@ -31,6 +32,9 @@ const AppContent: React.FC = () => {
 
       {/* Footer is visible on customer view */}
       {userRole === 'customer' && <Footer />}
+
+      {/* Virtual Advisor (Asesor Virtual de Preguntas Frecuentes) */}
+      <VirtualAdvisor />
 
       {/* Floating Cart Button for instant checkout */}
       <FloatingCartButton />

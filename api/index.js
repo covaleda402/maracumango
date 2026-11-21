@@ -311,12 +311,14 @@ router.get("/:id", async (req, res) => {
 });
 router.put("/:id", requireAdmin, async (req, res) => {
   const { id } = req.params;
-  const { nombre, direccion, ciudad, whatsapp, phone, activa } = req.body;
+  const { nombre, direccion, ciudad, whatsapp, phone, activa, is_active } = req.body;
+  const targetActiva = activa !== void 0 ? activa : is_active;
   if (!isDatabaseConfigured()) {
     const idx = devFallbackBranches.findIndex((s) => s.id === id);
     if (idx === -1) {
       return res.status(404).json({ error: "Sede no encontrada" });
     }
+    const resolvedActive = targetActiva !== void 0 ? !!targetActiva : devFallbackBranches[idx].activa !== false;
     devFallbackBranches[idx] = {
       ...devFallbackBranches[idx],
       ...nombre !== void 0 && { nombre: String(nombre).trim() },
@@ -324,10 +326,14 @@ router.put("/:id", requireAdmin, async (req, res) => {
       ...ciudad !== void 0 && { ciudad: String(ciudad).trim() },
       ...whatsapp !== void 0 && { whatsapp: String(whatsapp).trim() },
       ...phone !== void 0 && { phone: String(phone).trim() },
-      ...activa !== void 0 && { activa: !!activa }
+      activa: resolvedActive,
+      is_active: resolvedActive
     };
     return res.json({
       ...devFallbackBranches[idx],
+      branch: devFallbackBranches[idx],
+      activa: resolvedActive,
+      is_active: resolvedActive,
       message: "Sede actualizada exitosamente (Modo local)."
     });
   }
@@ -337,7 +343,7 @@ router.put("/:id", requireAdmin, async (req, res) => {
     const cleanCiudad = ciudad !== void 0 ? String(ciudad).trim() : null;
     const cleanWhatsapp = whatsapp !== void 0 ? String(whatsapp).trim() : null;
     const cleanPhone = phone !== void 0 ? String(phone).trim() : cleanWhatsapp;
-    const cleanActiva = activa !== void 0 ? !!activa : null;
+    const cleanActiva = targetActiva !== void 0 ? !!targetActiva : null;
     const result = await query(
       `UPDATE branches
        SET name = COALESCE($1, name),

@@ -117,13 +117,15 @@ router.get('/:id', async (req: Request, res: Response) => {
 // PUT /api/branches/:id — Update branch (Admin only)
 router.put('/:id', requireAdmin, async (req: Request, res: Response) => {
   const { id } = req.params;
-  const { nombre, direccion, ciudad, whatsapp, phone, activa } = req.body;
+  const { nombre, direccion, ciudad, whatsapp, phone, activa, is_active } = req.body;
+  const targetActiva = activa !== undefined ? activa : is_active;
 
   if (!isDatabaseConfigured()) {
     const idx = devFallbackBranches.findIndex((s) => s.id === id);
     if (idx === -1) {
       return res.status(404).json({ error: 'Sede no encontrada' });
     }
+    const resolvedActive = targetActiva !== undefined ? !!targetActiva : devFallbackBranches[idx].activa !== false;
     devFallbackBranches[idx] = {
       ...devFallbackBranches[idx],
       ...(nombre !== undefined && { nombre: String(nombre).trim() }),
@@ -131,10 +133,14 @@ router.put('/:id', requireAdmin, async (req: Request, res: Response) => {
       ...(ciudad !== undefined && { ciudad: String(ciudad).trim() }),
       ...(whatsapp !== undefined && { whatsapp: String(whatsapp).trim() }),
       ...(phone !== undefined && { phone: String(phone).trim() }),
-      ...(activa !== undefined && { activa: !!activa }),
+      activa: resolvedActive,
+      is_active: resolvedActive,
     };
     return res.json({
       ...devFallbackBranches[idx],
+      branch: devFallbackBranches[idx],
+      activa: resolvedActive,
+      is_active: resolvedActive,
       message: 'Sede actualizada exitosamente (Modo local).',
     });
   }
@@ -145,7 +151,7 @@ router.put('/:id', requireAdmin, async (req: Request, res: Response) => {
     const cleanCiudad = ciudad !== undefined ? String(ciudad).trim() : null;
     const cleanWhatsapp = whatsapp !== undefined ? String(whatsapp).trim() : null;
     const cleanPhone = phone !== undefined ? String(phone).trim() : cleanWhatsapp;
-    const cleanActiva = activa !== undefined ? !!activa : null;
+    const cleanActiva = targetActiva !== undefined ? !!targetActiva : null;
 
     const result = await query(
       `UPDATE branches

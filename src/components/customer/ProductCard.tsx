@@ -11,6 +11,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
   const { addToCart } = useApp();
   const [quantity, setQuantity] = useState<number>(1);
   const [showIngredients, setShowIngredients] = useState<boolean>(false);
+  const [isAdded, setIsAdded] = useState<boolean>(false);
 
   const ingredientsList =
     product.ingredients && product.ingredients.length > 0
@@ -34,6 +35,8 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
   const handleAdd = () => {
     addToCart(product, quantity);
     setQuantity(1);
+    setIsAdded(true);
+    setTimeout(() => setIsAdded(false), 1200);
   };
 
   return (
@@ -142,10 +145,17 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
             {/* Add Button */}
             <button
               onClick={handleAdd}
-              className="px-space-md py-space-xs rounded-xl bg-primary-container text-on-primary font-label-md text-label-md shadow-md hover:bg-primary active:scale-95 transition-all flex items-center gap-1 shrink-0"
+              className={`px-space-md py-space-xs rounded-xl font-label-md text-label-md shadow-md active:scale-95 transition-all flex items-center gap-1 shrink-0 ${
+                isAdded
+                  ? 'bg-secondary-container text-on-secondary-container font-bold'
+                  : 'bg-primary-container text-on-primary hover:bg-primary'
+              }`}
+              title="Agregar al pedido"
             >
-              <span className="material-symbols-outlined text-[18px]">add_shopping_cart</span>
-              <span className="hidden sm:inline">Agregar</span>
+              <span className="material-symbols-outlined text-[18px]">
+                {isAdded ? 'check_circle' : 'add_shopping_cart'}
+              </span>
+              <span className="hidden sm:inline">{isAdded ? '¡Agregado!' : 'Agregar'}</span>
             </button>
           </div>
         </div>

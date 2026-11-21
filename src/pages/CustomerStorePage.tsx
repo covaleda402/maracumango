@@ -5,7 +5,12 @@ import { ProductCard } from '../components/customer/ProductCard';
 import { SedesCard } from '../components/customer/SedesCard';
 
 export const CustomerStorePage: React.FC = () => {
-  const { products, categories: appCategories } = useApp();
+  const { products, categories: appCategories, sedes } = useApp();
+
+  const visibleSedes = sedes.filter(
+    (s) => !s.nombre.toLowerCase().includes('covaleda') && s.id !== 'sede-1795151700722'
+  );
+  const sedesCount = visibleSedes.length;
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>('all');
 
   const activeCategories = appCategories.filter((c) => c.active !== false);
@@ -63,11 +68,13 @@ export const CustomerStorePage: React.FC = () => {
                     storefront
                   </span>
                   <div className="flex flex-col min-w-0">
-                    <span className="font-label-sm text-label-sm text-on-surface truncate">
-                      2 Sedes Neiva
+                    <span className="font-label-sm text-label-sm text-on-surface truncate font-bold">
+                      {sedesCount} {sedesCount === 1 ? 'Sede en Neiva' : 'Sedes en Neiva'}
                     </span>
-                    <span className="font-body-sm text-[11px] text-on-surface-variant">
-                      Parque Amor & Ipanema
+                    <span className="font-body-sm text-[11px] text-on-surface-variant truncate" title={visibleSedes.map((s) => s.nombre).join(', ')}>
+                      {visibleSedes.length > 0
+                        ? visibleSedes.map((s) => s.nombre.replace(/Sede\s+/i, '')).join(' • ')
+                        : 'Encuéntranos en Neiva'}
                     </span>
                   </div>
                 </div>

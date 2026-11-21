@@ -87,13 +87,16 @@ export const Footer: React.FC = () => {
               Aceptamos pagos rápidos y seguros:
             </p>
             <div className="flex flex-wrap gap-1.5 pt-1">
-              <span className="px-2.5 py-1 rounded-lg bg-surface-container text-xs font-semibold text-primary border border-outline-variant/30">
+              <span className="px-2.5 py-1 rounded-lg bg-primary-container/20 text-xs font-bold text-primary border border-primary/30">
                 Nequi
               </span>
-              <span className="px-2.5 py-1 rounded-lg bg-surface-container text-xs font-semibold text-on-surface border border-outline-variant/30">
-                Efectivo
+              <span className="px-2.5 py-1 rounded-lg bg-secondary-container/20 text-xs font-bold text-secondary border border-secondary/30">
+                Bancolombia
               </span>
             </div>
+            <p className="text-[11px] text-tertiary font-medium">
+              * Pagos únicamente por transferencia electrónica con comprobante.
+            </p>
             <p className="text-[11px] text-on-surface-variant pt-2 border-t border-outline-variant/15 flex items-center gap-1">
               <span className="material-symbols-outlined text-[14px] text-primary">local_shipping</span>
               Entrega rápida a domicilio o para llevar.
