@@ -30,7 +30,7 @@ export const RoleModal: React.FC = () => {
   const [regPhone, setRegPhone] = useState('');
   const [regAddress, setRegAddress] = useState('');
   const [regPassword, setRegPassword] = useState('');
-  const [acceptedTerms, setAcceptedTerms] = useState(true);
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
 
   // Password reset states
   const [resetEmail, setResetEmail] = useState('');

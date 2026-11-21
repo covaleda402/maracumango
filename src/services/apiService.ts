@@ -635,6 +635,10 @@ export const apiService = {
     setAuthToken(null);
   },
 
+  getAuthToken(): string | null {
+    return getAuthToken();
+  },
+
   async getUsers(role: string = 'admin'): Promise<AppUser[]> {
     try {
       const res = await fetch(`${BASE_URL}/auth/users`, {

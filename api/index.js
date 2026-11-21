@@ -91,6 +91,10 @@ var ensureSchema = async () => {
           DELETE FROM shifts WHERE branch_id = 'sede-1795151700722' OR branch_id IN (SELECT id FROM branches WHERE is_active = FALSE OR LOWER(name) LIKE '%covaleda%');
           DELETE FROM branches WHERE id = 'sede-1795151700722' OR is_active = FALSE OR LOWER(name) LIKE '%covaleda%';
           UPDATE users SET role_id = 'CUSTOMER', branch_id = NULL WHERE id LIKE 'cust-%' AND role_id != 'CUSTOMER';
+          -- 8. Ensure active core products & purge test products
+          UPDATE products SET is_active = TRUE WHERE id = 'prod-1';
+          DELETE FROM product_ingredients WHERE product_id IN (SELECT id FROM products WHERE LOWER(name) LIKE '%test persistence%');
+          DELETE FROM products WHERE LOWER(name) LIKE '%test persistence%';
         `);
         console.log("\u2705 [Database]: Esquema, columnas (phone, default_address), tablas de seguridad y depuraci\xF3n de sedes verificadas/migradas.");
       } catch (err) {
@@ -480,7 +484,7 @@ var INITIAL_PRODUCTS = [
     category: "Granizados",
     price: 14e3,
     description: "Nuestra combinaci\xF3n estrella de maracuy\xE1 \xE1cido y mango biche con escarchado de taj\xEDn, leche condensada y gomitas.",
-    image: "/images/granizado.png",
+    image: "/images/granizado.webp",
     active: true,
     popular: true
   },
@@ -490,7 +494,7 @@ var INITIAL_PRODUCTS = [
     category: "Granizados",
     price: 12e3,
     description: "Hielo frapeado con pulpa 100% natural de mango biche huilense, lim\xF3n fresco, sal marina y chamoy artesanal.",
-    image: "/images/granizado.png",
+    image: "/images/granizado.webp",
     active: true,
     popular: true
   },
@@ -500,7 +504,7 @@ var INITIAL_PRODUCTS = [
     category: "Granizados",
     price: 12500,
     description: "Refrescante granizado de pulpa con semillas crujientes de maracuy\xE1, sirope de la casa y un toque tropical.",
-    image: "/images/granizado.png",
+    image: "/images/granizado.webp",
     active: true
   },
   {
@@ -509,7 +513,7 @@ var INITIAL_PRODUCTS = [
     category: "Micheladas",
     price: 16e3,
     description: "Cerveza helada con zumo natural de maracuy\xE1 y tiras de mango biche, borde escarchado en chamoy y sal de taj\xEDn.",
-    image: "/images/michelada.png",
+    image: "/images/michelada.webp",
     active: true,
     popular: true
   },
@@ -519,7 +523,7 @@ var INITIAL_PRODUCTS = [
     category: "Micheladas",
     price: 14500,
     description: "Cerveza nacional bien fr\xEDa con zumo de lim\xF3n reci\xE9n exprimido, toque secreto de especias y borde salado.",
-    image: "/images/michelada.png",
+    image: "/images/michelada.webp",
     active: true
   },
   {
@@ -528,7 +532,7 @@ var INITIAL_PRODUCTS = [
     category: "Helados",
     price: 1e4,
     description: "Cremoso gelato artesanal hecho a mano con frutas tropicales locales, salsa concentrada de maracuy\xE1 y trozos de mango.",
-    image: "/images/helado.png",
+    image: "/images/helado.webp",
     active: true,
     popular: true
   },
@@ -538,7 +542,7 @@ var INITIAL_PRODUCTS = [
     category: "Helados",
     price: 9500,
     description: "Copa de helado suave de maracuy\xE1 ba\xF1ado en abundante leche condensada y crocante de barquillo.",
-    image: "/images/helado.png",
+    image: "/images/helado.webp",
     active: true
   }
 ];
@@ -980,7 +984,7 @@ var formatProductRow = (p, categoryName, ingredientsList) => {
     categoryId: p.category_id || p.categoryId || "cat-1",
     price: typeof p.price === "string" ? parseFloat(p.price) : Number(p.price || 0),
     description: p.description ? String(p.description) : "",
-    image: p.image_url || p.image || "/images/granizado.png",
+    image: p.image_url || p.image || "/images/granizado.webp",
     popular: !!(p.is_popular ?? p.popular),
     active: p.is_active !== void 0 ? !!p.is_active : p.active !== void 0 ? !!p.active : true,
     ingredients: finalIngs
@@ -1065,7 +1069,7 @@ router4.post("/", requireAdmin, validateProductInput, async (req, res) => {
       categoryId: categoryId || "cat-1",
       price: Number(price),
       description: description ? description.trim() : "",
-      image: imageUrl || image || "/images/granizado.png",
+      image: imageUrl || image || "/images/granizado.webp",
       popular: !!(isPopular ?? popular),
       active: isActive !== void 0 ? !!isActive : active !== void 0 ? !!active : true,
       ingredients: Array.isArray(ingredients) ? ingredients : []
@@ -1077,7 +1081,7 @@ router4.post("/", requireAdmin, validateProductInput, async (req, res) => {
   try {
     await client.query("BEGIN");
     const resolvedCatId = await resolveCategoryId(client, categoryId, category);
-    const finalImage = imageUrl || image || "/images/granizado.png";
+    const finalImage = imageUrl || image || "/images/granizado.webp";
     const finalPopular = isPopular !== void 0 ? !!isPopular : popular !== void 0 ? !!popular : false;
     const finalActive = isActive !== void 0 ? !!isActive : active !== void 0 ? !!active : true;
     const productId = `prod-${Date.now()}`;
@@ -2060,20 +2064,27 @@ router5.post("/", validateCustomerOrder, async (req, res) => {
       [productIds]
     );
     const productMap = new Map(productsRes.rows.map((p) => [p.id, p]));
+    for (const item of items) {
+      if (!productMap.has(item.productId)) {
+        return res.status(400).json({
+          error: `El producto con ID '${item.productId}' no existe o ya no est\xE1 disponible en el men\xFA.`
+        });
+      }
+    }
     let calculatedSubtotal = 0;
     const validatedItems = items.map((item) => {
       const prod = productMap.get(item.productId);
-      const unitPrice = prod ? Number(prod.price) : Number(item.unitPrice || 0);
+      const unitPrice = Number(prod.price);
       const itemSubtotal = unitPrice * item.quantity;
       calculatedSubtotal += itemSubtotal;
       return {
         productId: item.productId,
-        productName: prod ? prod.name : item.productName || "Producto",
+        productName: prod.name,
         unitPrice,
         quantity: item.quantity,
         subtotal: itemSubtotal,
         notes: item.notes || null,
-        ingredientsSnapshot: prod ? prod.ingredients : item.ingredients || []
+        ingredientsSnapshot: prod.ingredients || []
       };
     });
     const fee = Number(deliveryFee) || 0;
@@ -3184,7 +3195,9 @@ router7.post("/forgot-password", async (req, res) => {
   const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
   const expiresAt = Date.now() + 15 * 60 * 1e3;
   const tokenId = `rst-${Date.now()}`;
-  const clientOrigin = req.headers.origin || (req.headers.referer ? new URL(req.headers.referer).origin : "") || process.env.APP_URL || "https://maracumango-theta.vercel.app";
+  const incomingOrigin = req.headers.origin || (req.headers.referer ? new URL(req.headers.referer).origin : "");
+  const isLocalDev = incomingOrigin.includes("localhost") || incomingOrigin.includes("127.0.0.1");
+  const clientOrigin = isLocalDev ? incomingOrigin : process.env.APP_URL || "https://maracumango-theta.vercel.app";
   const resetLink = `${clientOrigin}/?resetToken=${rawToken}&email=${encodeURIComponent(cleanEmail)}`;
   if (!isDatabaseConfigured()) {
     devFallbackResetTokens.push({
@@ -3669,7 +3682,7 @@ apiRouter.get("/health", async (_req, res) => {
   }
   res.json({
     status: "ok",
-    environment: process.env.NODE_ENV || "development",
+    environment: process.env.NODE_ENV || (process.env.VERCEL ? "production" : "development"),
     database: {
       engine: "Neon PostgreSQL",
       configured: dbConnected,

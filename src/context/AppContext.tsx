@@ -164,7 +164,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       const [loadedProducts, loadedOrders, loadedConfig, loadedCats, loadedSedes] = await Promise.all([
         apiService.getProducts(),
-        apiService.getOrders(userRole, userRole === 'worker' ? workerSedeId : adminSedeId),
+        apiService.getAuthToken() ? apiService.getOrders(userRole, userRole === 'worker' ? workerSedeId : adminSedeId) : Promise.resolve([]),
         apiService.getSettings(),
         apiService.getCategories(),
         apiService.getBranches(),

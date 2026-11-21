@@ -18,16 +18,17 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
       : PRODUCT_INGREDIENTS[product.id] || ['Pulpa natural de fruta', 'Hielo frapeado', 'Ingredientes de la casa'];
 
   const getCategoryBadgeClass = (category: string) => {
-    switch (category) {
-      case 'Granizados':
-        return 'bg-primary-container/15 text-primary border-primary/20';
-      case 'Micheladas':
-        return 'bg-secondary-container/30 text-secondary border-secondary/30';
-      case 'Helados':
-        return 'bg-tertiary-container/15 text-tertiary border-tertiary/20';
-      default:
-        return 'bg-surface-container text-on-surface';
+    const norm = (category || '').toLowerCase().trim();
+    if (norm.includes('granizado')) {
+      return 'bg-primary-container/20 text-primary border-primary/30';
     }
+    if (norm.includes('michelada')) {
+      return 'bg-amber-500 text-white border-amber-600 shadow-sm font-bold';
+    }
+    if (norm.includes('helado')) {
+      return 'bg-tertiary-container text-on-tertiary border-tertiary shadow-sm font-semibold';
+    }
+    return 'bg-surface-container-high text-on-surface border-outline-variant/30';
   };
 
   const handleAdd = () => {

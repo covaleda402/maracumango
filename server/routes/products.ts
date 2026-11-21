@@ -34,7 +34,7 @@ const formatProductRow = (p: any, categoryName?: string, ingredientsList?: strin
     categoryId: p.category_id || p.categoryId || 'cat-1',
     price: typeof p.price === 'string' ? parseFloat(p.price) : Number(p.price || 0),
     description: p.description ? String(p.description) : '',
-    image: p.image_url || p.image || '/images/granizado.png',
+    image: p.image_url || p.image || '/images/granizado.webp',
     popular: !!(p.is_popular ?? p.popular),
     active: p.is_active !== undefined ? !!p.is_active : (p.active !== undefined ? !!p.active : true),
     ingredients: finalIngs,
@@ -130,7 +130,7 @@ router.post('/', requireAdmin, validateProductInput, async (req: Request, res: R
       categoryId: categoryId || 'cat-1',
       price: Number(price),
       description: description ? description.trim() : '',
-      image: imageUrl || image || '/images/granizado.png',
+      image: imageUrl || image || '/images/granizado.webp',
       popular: !!(isPopular ?? popular),
       active: isActive !== undefined ? !!isActive : (active !== undefined ? !!active : true),
       ingredients: Array.isArray(ingredients) ? ingredients : [],
@@ -143,7 +143,7 @@ router.post('/', requireAdmin, validateProductInput, async (req: Request, res: R
   try {
     await client.query('BEGIN');
     const resolvedCatId = await resolveCategoryId(client, categoryId, category);
-    const finalImage = imageUrl || image || '/images/granizado.png';
+    const finalImage = imageUrl || image || '/images/granizado.webp';
     const finalPopular = isPopular !== undefined ? !!isPopular : (popular !== undefined ? !!popular : false);
     const finalActive = isActive !== undefined ? !!isActive : (active !== undefined ? !!active : true);
     const productId = `prod-${Date.now()}`;

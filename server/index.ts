@@ -91,7 +91,7 @@ apiRouter.get('/health', async (_req, res) => {
 
   res.json({
     status: 'ok',
-    environment: process.env.NODE_ENV || 'development',
+    environment: process.env.NODE_ENV || (process.env.VERCEL ? 'production' : 'development'),
     database: {
       engine: 'Neon PostgreSQL',
       configured: dbConnected,

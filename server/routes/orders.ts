@@ -471,21 +471,30 @@ router.post('/', validateCustomerOrder, async (req: Request, res: Response) => {
 
     const productMap = new Map(productsRes.rows.map((p) => [p.id, p]));
 
+    // Security validation (SEC-02): Ensure every item exists in database
+    for (const item of items) {
+      if (!productMap.has(item.productId)) {
+        return res.status(400).json({
+          error: `El producto con ID '${item.productId}' no existe o ya no está disponible en el menú.`,
+        });
+      }
+    }
+
     let calculatedSubtotal = 0;
     const validatedItems = items.map((item: any) => {
       const prod = productMap.get(item.productId);
-      const unitPrice = prod ? Number(prod.price) : Number(item.unitPrice || 0);
+      const unitPrice = Number(prod.price);
       const itemSubtotal = unitPrice * item.quantity;
       calculatedSubtotal += itemSubtotal;
 
       return {
         productId: item.productId,
-        productName: prod ? prod.name : item.productName || 'Producto',
+        productName: prod.name,
         unitPrice,
         quantity: item.quantity,
         subtotal: itemSubtotal,
         notes: item.notes || null,
-        ingredientsSnapshot: prod ? prod.ingredients : item.ingredients || [],
+        ingredientsSnapshot: prod.ingredients || [],
       };
     });
 

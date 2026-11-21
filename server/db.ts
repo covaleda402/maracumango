@@ -94,6 +94,10 @@ export const ensureSchema = async (): Promise<void> => {
           DELETE FROM shifts WHERE branch_id = 'sede-1795151700722' OR branch_id IN (SELECT id FROM branches WHERE is_active = FALSE OR LOWER(name) LIKE '%covaleda%');
           DELETE FROM branches WHERE id = 'sede-1795151700722' OR is_active = FALSE OR LOWER(name) LIKE '%covaleda%';
           UPDATE users SET role_id = 'CUSTOMER', branch_id = NULL WHERE id LIKE 'cust-%' AND role_id != 'CUSTOMER';
+          -- 8. Ensure active core products & purge test products
+          UPDATE products SET is_active = TRUE WHERE id = 'prod-1';
+          DELETE FROM product_ingredients WHERE product_id IN (SELECT id FROM products WHERE LOWER(name) LIKE '%test persistence%');
+          DELETE FROM products WHERE LOWER(name) LIKE '%test persistence%';
         `);
         console.log('✅ [Database]: Esquema, columnas (phone, default_address), tablas de seguridad y depuración de sedes verificadas/migradas.');
       } catch (err: any) {

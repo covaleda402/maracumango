@@ -423,12 +423,11 @@ router.post('/forgot-password', async (req: Request, res: Response) => {
   const expiresAt = Date.now() + 15 * 60 * 1000; // 15 minutes
   const tokenId = `rst-${Date.now()}`;
 
-  // Build client origin for the secure reset link
-  const clientOrigin =
-    (req.headers.origin as string) ||
-    (req.headers.referer ? new URL(req.headers.referer as string).origin : '') ||
-    process.env.APP_URL ||
-    'https://maracumango-theta.vercel.app';
+
+  // Build client origin for the secure reset link (Locks strictly to canonical production domain to avoid Vercel Authentication on preview URLs)
+  const incomingOrigin = (req.headers.origin as string) || (req.headers.referer ? new URL(req.headers.referer as string).origin : '');
+  const isLocalDev = incomingOrigin.includes('localhost') || incomingOrigin.includes('127.0.0.1');
+  const clientOrigin = isLocalDev ? incomingOrigin : (process.env.APP_URL || 'https://maracumango-theta.vercel.app');
 
   const resetLink = `${clientOrigin}/?resetToken=${rawToken}&email=${encodeURIComponent(cleanEmail)}`;
 

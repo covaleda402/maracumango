@@ -105,7 +105,7 @@ export const CustomerStorePage: React.FC = () => {
             {/* Visual Hero Banner */}
             <div className="lg:col-span-5 relative z-10">
               <div className="relative rounded-3xl overflow-hidden shadow-2xl border-4 border-surface-container-lowest bg-gradient-to-br from-primary-container to-secondary-container p-6 text-on-primary">
-                <div className="absolute top-0 right-0 p-8 opacity-10">
+                <div className="pointer-events-none absolute top-0 right-0 p-8 opacity-10">
                   <span className="material-symbols-outlined text-[160px]">local_drink</span>
                 </div>
 
@@ -122,7 +122,7 @@ export const CustomerStorePage: React.FC = () => {
 
                 <div className="flex items-center justify-between">
                   <div className="flex flex-col">
-                    <span className="text-xs uppercase tracking-wider text-white/80">Desde</span>
+                    <span className="text-xs uppercase tracking-wider text-white/80">Precio</span>
                     <span className="font-headline-lg text-headline-lg font-bold text-white">
                       $14.000
                     </span>
@@ -146,7 +146,7 @@ export const CustomerStorePage: React.FC = () => {
       </section>
 
       {/* Catalog & Menu Section */}
-      <section id="menu-section" className="py-space-2xl max-w-7xl mx-auto px-margin-mobile lg:px-margin-desktop">
+      <section id="menu-section" className="scroll-mt-24 py-space-2xl max-w-7xl mx-auto px-margin-mobile lg:px-margin-desktop">
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-space-md mb-space-xl">
           <div>
             <div className="inline-flex items-center gap-space-2xs px-space-xs py-space-2xs rounded-full bg-primary-container/15 text-primary font-label-sm uppercase tracking-wider mb-2">
