@@ -5,7 +5,7 @@ import { SEDES } from '../../data/sedes';
 export const SedesCard: React.FC = () => {
   const { sedes } = useApp();
   const branchesList = (sedes && sedes.length > 0 ? sedes : SEDES).filter(
-    (s) => s.activa !== false && !s.nombre.toLowerCase().includes('covaleda') && s.id !== 'sede-1795151700722'
+    (s) => !s.nombre.toLowerCase().includes('covaleda') && s.id !== 'sede-1795151700722'
   );
 
   return (
@@ -35,11 +35,12 @@ export const SedesCard: React.FC = () => {
         {branchesList.map((sede, idx) => {
           const cleanPhone = (sede.whatsapp || sede.phone || '3177401873').replace(/\D/g, '');
           const isPrimary = idx === 0;
+          const isOpen = sede.activa !== false;
 
           return (
             <div
               key={sede.id}
-              className="p-space-md rounded-2xl bg-surface-container-low border border-outline-variant/30 flex flex-col justify-between space-y-space-md"
+              className={`p-space-md rounded-2xl border flex flex-col justify-between space-y-space-md transition-all ${isOpen ? 'bg-surface-container-low border-outline-variant/30' : 'bg-surface-container-lowest/70 border-error/25 opacity-90'}`}
             >
               <div>
                 <div className="flex items-center justify-between mb-3">
@@ -52,11 +53,23 @@ export const SedesCard: React.FC = () => {
                   >
                     {isPrimary ? 'Sede Principal' : 'Punto Maracumango'}
                   </span>
-                  <span className="font-label-sm text-tertiary flex items-center gap-1">
-                    <span className="w-2 h-2 rounded-full bg-tertiary animate-ping"></span> Abierto Ahora
-                  </span>
+                  {isOpen ? (
+                    <span className="font-label-sm text-tertiary flex items-center gap-1.5 font-semibold text-xs">
+                      <span className="w-2 h-2 rounded-full bg-tertiary animate-pulse"></span> Abierto Ahora
+                    </span>
+                  ) : (
+                    <span className="font-label-sm text-error flex items-center gap-1.5 font-semibold text-xs bg-error/10 px-2.5 py-0.5 rounded-full border border-error/25">
+                      <span className="w-2 h-2 rounded-full bg-error"></span> Cerrado Hoy
+                    </span>
+                  )}
                 </div>
 
+                {!isOpen && (
+                  <div className="mb-3 p-2.5 rounded-xl bg-error/10 border border-error/20 text-error text-[11px] font-medium flex items-center gap-1.5">
+                    <span className="material-symbols-outlined text-[15px]">event_busy</span>
+                    <span>Esta sede no presta servicio el día de hoy.</span>
+                  </div>
+                )}
                 <h3 className="font-headline-sm text-headline-sm text-on-surface mb-1">
                   {sede.nombre}
                 </h3>

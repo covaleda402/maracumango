@@ -48,6 +48,17 @@ export const CartDrawer: React.FC = () => {
     }
   }, [currentUser]);
 
+  // Auto-switch to open sede if currently selected sede is closed
+  useEffect(() => {
+    const current = sedes.find((s) => s.id === selectedSedeId);
+    if (current && current.activa === false) {
+      const firstOpen = sedes.find((s) => s.activa !== false && !s.nombre.toLowerCase().includes('covaleda'));
+      if (firstOpen) {
+        setSelectedSedeId(firstOpen.id);
+      }
+    }
+  }, [sedes, selectedSedeId, setSelectedSedeId]);
+
   if (!isCartOpen) return null;
 
   const currentSede = sedes.find((s) => s.id === selectedSedeId) || getSedeById(selectedSedeId);
@@ -81,6 +92,10 @@ export const CartDrawer: React.FC = () => {
     }
     if (deliveryMethod === 'domicilio' && !deliveryAddress.trim()) {
       setErrorMessage('Por favor ingresa la dirección para la entrega del domicilio en Neiva.');
+      return;
+    }
+    if (currentSede.activa === false) {
+      setErrorMessage('La sede seleccionada se encuentra cerrada en este momento. Por favor elige una sede abierta.');
       return;
     }
 
@@ -132,7 +147,8 @@ ${
           ? `Domicilio (${createdOrder.deliveryAddress})`
           : `Recoger en tienda (${currentSede.nombre})`
       }
-*Método de Pago Preferido:* ${createdOrder.paymentMethod === 'nequi' ? 'Nequi' : 'Efectivo'}${
+*Método de Pago:* Transferencia (${createdOrder.paymentMethod === 'bancolombia' ? 'Bancolombia' : 'Nequi'})
+📸 *Comprobante Obligatorio:* Se debe enviar el mensaje del pedido y también en el mismo WhatsApp el comprobante de pago.${
         createdOrder.notes ? `\n*Indicaciones:* ${createdOrder.notes}` : ''
       }
 
@@ -335,27 +351,35 @@ ${
                         {sedes
                           .filter(
                             (s) =>
-                              s.activa !== false &&
                               !s.nombre.toLowerCase().includes('covaleda') &&
                               s.id !== 'sede-1795151700722'
                           )
                           .map((sede) => {
                           const isSelected = selectedSedeId === sede.id;
+                          const isOpen = sede.activa !== false;
                           return (
                             <button
                               key={sede.id}
                               type="button"
-                              onClick={() => setSelectedSedeId(sede.id)}
-                              className={`p-3 rounded-2xl text-left transition-all border flex items-start justify-between ${
-                                isSelected
-                                  ? 'bg-primary-container/10 border-primary shadow-sm'
-                                  : 'bg-surface-container-low border-outline-variant/20 hover:bg-surface-container'
+                              disabled={!isOpen}
+                              onClick={() => isOpen && setSelectedSedeId(sede.id)}
+                              className={`p-3 rounded-2xl text-left transition-all border flex items-start justify-between w-full ${
+                                !isOpen
+                                  ? 'opacity-55 cursor-not-allowed bg-surface-container-lowest/60 border-error/20'
+                                  : isSelected
+                                  ? 'bg-primary-container/10 border-primary shadow-sm cursor-pointer'
+                                  : 'bg-surface-container-low border-outline-variant/20 hover:bg-surface-container cursor-pointer'
                               }`}
                             >
                               <div className="space-y-0.5">
                                 <div className="flex items-center gap-2">
-                                  <span className={`w-2 h-2 rounded-full ${isSelected ? 'bg-primary animate-pulse' : 'bg-outline-variant'}`}></span>
+                                  <span className={`w-2 h-2 rounded-full ${!isOpen ? 'bg-error' : isSelected ? 'bg-primary animate-pulse' : 'bg-outline-variant'}`}></span>
                                   <p className="font-label-lg text-xs text-on-surface font-semibold">{sede.nombre}</p>
+                                  {!isOpen && (
+                                    <span className="px-2 py-0.5 rounded-full bg-error/15 text-error text-[10px] font-bold">
+                                      Cerrado hoy
+                                    </span>
+                                  )}
                                 </div>
                                 <p className="text-[11px] text-on-surface-variant flex items-center gap-1 pl-3.5">
                                   <span className="material-symbols-outlined text-[13px]">location_on</span>
@@ -366,7 +390,7 @@ ${
                                   WhatsApp: +57 {sede.whatsapp}
                                 </p>
                               </div>
-                              {isSelected && (
+                              {isSelected && isOpen && (
                                 <span className="material-symbols-outlined text-primary text-[18px]">check_circle</span>
                               )}
                             </button>
@@ -428,10 +452,10 @@ ${
                       </div>
                     )}
 
-                    {/* Método de Pago */}
-                    <div>
-                      <label className="block font-label-md text-xs text-on-surface mb-1.5 font-bold">
-                        Método de Pago Preferido *
+                    {/* Método de Pago (Solo Transferencias: Nequi / Bancolombia) */}
+                    <div className="space-y-2">
+                      <label className="block font-label-md text-xs text-on-surface font-bold">
+                        Método de Pago (Transferencia) *
                       </label>
                       <div className="grid grid-cols-2 gap-2">
                         <button
@@ -439,30 +463,41 @@ ${
                           onClick={() => setPaymentMethod('nequi')}
                           className={`p-2.5 rounded-xl flex items-center justify-center gap-1.5 font-semibold text-xs transition-all border ${
                             paymentMethod === 'nequi'
-                              ? 'bg-secondary-container text-on-secondary-container border-secondary-container shadow-sm'
+                              ? 'bg-secondary-container text-on-secondary-container border-secondary-container shadow-sm font-bold'
                               : 'bg-surface-container-low text-on-surface-variant border-outline-variant/20 hover:bg-surface-container'
                           }`}
                         >
                           <span className="material-symbols-outlined text-[16px]">account_balance_wallet</span>
-                          <span>Nequi / Daviplata</span>
+                          <span>Nequi</span>
                         </button>
 
                         <button
                           type="button"
-                          disabled={deliveryMethod === 'recoger'}
-                          onClick={() => deliveryMethod !== 'recoger' && setPaymentMethod('efectivo')}
+                          onClick={() => setPaymentMethod('bancolombia')}
                           className={`p-2.5 rounded-xl flex items-center justify-center gap-1.5 font-semibold text-xs transition-all border ${
-                            deliveryMethod === 'recoger'
-                              ? 'opacity-40 cursor-not-allowed bg-surface-container-low border-outline-variant/10 text-on-surface-variant/40'
-                              : paymentMethod === 'efectivo'
-                              ? 'bg-secondary-container text-on-secondary-container border-secondary-container shadow-sm'
+                            paymentMethod === 'bancolombia'
+                              ? 'bg-secondary-container text-on-secondary-container border-secondary-container shadow-sm font-bold'
                               : 'bg-surface-container-low text-on-surface-variant border-outline-variant/20 hover:bg-surface-container'
                           }`}
-                          title={deliveryMethod === 'recoger' ? 'Solo Nequi para recoger' : undefined}
                         >
-                          <span className="material-symbols-outlined text-[16px]">payments</span>
-                          <span>Efectivo</span>
+                          <span className="material-symbols-outlined text-[16px]">account_balance</span>
+                          <span>Bancolombia</span>
                         </button>
+                      </div>
+
+                      {/* Aviso Obligatorio de Comprobante de Pago */}
+                      <div className="p-3 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-xs text-on-surface flex items-start gap-2.5">
+                        <span className="material-symbols-outlined text-amber-600 dark:text-amber-400 text-[20px] shrink-0 mt-0.5">
+                          receipt_long
+                        </span>
+                        <div className="leading-snug">
+                          <strong className="text-amber-800 dark:text-amber-300 font-bold block text-xs">
+                            Aviso de Pago:
+                          </strong>
+                          <p className="mt-0.5 text-[11px] text-on-surface-variant font-medium">
+                            Se debe enviar el mensaje del pedido y tambien en el mismo whatsApp el comprobante de pago.
+                          </p>
+                        </div>
                       </div>
                     </div>
 

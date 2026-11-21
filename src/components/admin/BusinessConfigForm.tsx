@@ -137,6 +137,48 @@ export const BusinessConfigForm: React.FC = () => {
     }
   };
 
+  const handleToggleSedeActive = async (sedeId: string) => {
+    const data = sedeForms[sedeId];
+    if (!data) return;
+
+    const currentStatus = data.activa !== false;
+    const newStatus = !currentStatus;
+
+    setIsSaving(true);
+    setSuccessMessage(null);
+    setErrorMessage(null);
+    try {
+      await updateSede(sedeId, {
+        nombre: (data.nombre || '').trim(),
+        direccion: (data.direccion || '').trim(),
+        ciudad: (data.ciudad || 'Neiva, Huila').trim(),
+        whatsapp: (data.whatsapp || '').trim(),
+        phone: (data.whatsapp || '').trim(),
+        horario: (data.horario || '').trim(),
+        activa: newStatus,
+      });
+
+      setSedeForms((prev) => ({
+        ...prev,
+        [sedeId]: {
+          ...prev[sedeId],
+          activa: newStatus,
+        },
+      }));
+
+      setSuccessMessage(
+        newStatus
+          ? `¡Sede "${data.nombre}" activada exitosamente! Los clientes ahora pueden seleccionarla.`
+          : `¡Sede "${data.nombre}" desactivada (cerrada hoy). Aparecerá como cerrada en la tienda.`
+      );
+      setTimeout(() => setSuccessMessage(null), 4000);
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Error al cambiar el estado de la sede.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const handleCreateNewSede = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newSedeNombre.trim() || !newSedeDireccion.trim() || !newSedeWhatsapp.trim()) {
@@ -276,23 +318,33 @@ export const BusinessConfigForm: React.FC = () => {
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-outline-variant/15 pb-4">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-xs font-bold uppercase tracking-wider text-on-surface-variant mr-1">
-                  Sedes ({sedes.filter((s) => s.activa !== false).length}):
+                  Sedes ({sedes.length}):
                 </span>
-                {sedes.filter((s) => s.activa !== false).map((s) => (
-                  <button
-                    key={s.id}
-                    type="button"
-                    onClick={() => setSelectedSedeId(s.id)}
-                    className={`px-3.5 py-1.5 rounded-2xl text-xs font-bold transition-all flex items-center gap-1.5 border ${
-                      selectedSedeId === s.id
-                        ? 'bg-primary-container text-on-primary border-primary shadow-sm'
-                        : 'bg-surface-container-low text-on-surface-variant border-outline-variant/20 hover:bg-surface-container'
-                    }`}
-                  >
-                    <span className="material-symbols-outlined text-[15px]">location_on</span>
-                    <span>{s.nombre}</span>
-                  </button>
-                ))}
+                {sedes.map((s) => {
+                  const isActive = s.activa !== false;
+                  return (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => setSelectedSedeId(s.id)}
+                      className={`px-3 py-1.5 rounded-2xl text-xs font-bold transition-all flex items-center gap-1.5 border ${
+                        selectedSedeId === s.id
+                          ? 'bg-primary-container text-on-primary border-primary shadow-sm'
+                          : 'bg-surface-container-low text-on-surface-variant border-outline-variant/20 hover:bg-surface-container'
+                      }`}
+                    >
+                      <span className={`w-2 h-2 rounded-full shrink-0 ${isActive ? 'bg-emerald-500' : 'bg-red-500'}`} />
+                      <span>{s.nombre}</span>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-semibold ${
+                        isActive
+                          ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                          : 'bg-red-500/15 text-red-600 dark:text-red-400'
+                      }`}>
+                        {isActive ? 'Abierta' : 'Cerrada'}
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
 
               <button
@@ -308,14 +360,24 @@ export const BusinessConfigForm: React.FC = () => {
             {/* Sede Editing Form */}
             {currentSedeOriginal && (
               <form onSubmit={(e) => handleSedeSubmit(selectedSedeId, e)} className="space-y-4">
-                <div className="p-3.5 rounded-2xl bg-primary-container/10 border border-primary/20 flex items-center justify-between">
+                <div className="p-3.5 rounded-2xl bg-primary-container/10 border border-primary/20 flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-2 text-primary font-semibold text-sm">
                     <span className="material-symbols-outlined text-[20px]">edit_location</span>
                     <span>Editando: {currentSedeOriginal.nombre}</span>
                   </div>
-                  <span className="text-xs bg-surface-container-lowest px-2.5 py-1 rounded-lg font-mono font-bold text-on-surface border border-outline-variant/20">
-                    ID: {selectedSedeId}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className={`px-2.5 py-1 rounded-full text-xs font-bold flex items-center gap-1 border ${
+                      currentSedeData.activa !== false
+                        ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30'
+                        : 'bg-error/15 text-error border-error/30'
+                    }`}>
+                      <span className={`w-2 h-2 rounded-full ${currentSedeData.activa !== false ? 'bg-emerald-500 animate-pulse' : 'bg-error'}`} />
+                      {currentSedeData.activa !== false ? 'Sede Abierta al Público' : 'Sede Cerrada Hoy'}
+                    </span>
+                    <span className="text-xs bg-surface-container-lowest px-2.5 py-1 rounded-lg font-mono font-bold text-on-surface border border-outline-variant/20">
+                      ID: {selectedSedeId}
+                    </span>
+                  </div>
                 </div>
 
                 <div>
@@ -410,26 +472,50 @@ export const BusinessConfigForm: React.FC = () => {
                   </label>
                 </div>
 
-                <div className="pt-4 border-t border-outline-variant/20 flex flex-col sm:flex-row items-center justify-between gap-3">
+                <div className="pt-4 border-t border-outline-variant/20 flex flex-col md:flex-row items-center justify-between gap-3">
                   <button
                     type="button"
                     disabled={isSaving}
                     onClick={() => handleDeleteSede(selectedSedeId, currentSedeOriginal?.nombre || 'Sede')}
-                    className="px-4 py-2 rounded-xl bg-error/10 hover:bg-error/20 border border-error/30 text-error font-semibold text-xs transition-colors flex items-center gap-1.5 active:scale-95"
+                    className="w-full md:w-auto px-4 py-2.5 rounded-xl bg-error/10 hover:bg-error/20 border border-error/30 text-error font-semibold text-xs transition-colors flex items-center justify-center gap-1.5 active:scale-95"
                     title="Eliminar sede definitivamente de la base de datos"
                   >
                     <span className="material-symbols-outlined text-[16px]">delete_forever</span>
                     <span>Eliminar Sede Permanentemente</span>
                   </button>
 
-                  <button
-                    type="submit"
-                    disabled={isSaving}
-                    className="px-6 py-2.5 rounded-2xl bg-primary-container text-on-primary font-bold text-sm shadow-md hover:bg-primary transition-all flex items-center gap-2 disabled:opacity-50"
-                  >
-                    <span className="material-symbols-outlined text-[18px]">save</span>
-                    <span>{isSaving ? 'Guardando en Base de Datos...' : `Guardar Cambios de ${currentSedeData.nombre || 'Sede'}`}</span>
-                  </button>
+                  <div className="flex flex-col sm:flex-row items-center gap-2.5 w-full md:w-auto">
+                    {/* Botón para Desactivar o Activar la Sede (Cerrar hoy / Abrir hoy) */}
+                    <button
+                      type="button"
+                      disabled={isSaving}
+                      onClick={() => handleToggleSedeActive(selectedSedeId)}
+                      className={`w-full sm:w-auto px-4 py-2.5 rounded-2xl font-bold text-xs transition-all flex items-center justify-center gap-2 shadow-sm border ${
+                        currentSedeData.activa !== false
+                          ? 'bg-amber-500/15 hover:bg-amber-500/25 border-amber-500/40 text-amber-700 dark:text-amber-300'
+                          : 'bg-emerald-500/15 hover:bg-emerald-500/25 border-emerald-500/40 text-emerald-700 dark:text-emerald-300'
+                      }`}
+                      title={currentSedeData.activa !== false ? 'Marcar sede como cerrada hoy' : 'Marcar sede como abierta hoy'}
+                    >
+                      <span className="material-symbols-outlined text-[18px]">
+                        {currentSedeData.activa !== false ? 'pause_circle' : 'play_circle'}
+                      </span>
+                      <span>
+                        {currentSedeData.activa !== false
+                          ? 'Desactivar Sede (Cerrar Hoy)'
+                          : 'Activar Sede (Abrir Hoy)'}
+                      </span>
+                    </button>
+
+                    <button
+                      type="submit"
+                      disabled={isSaving}
+                      className="w-full sm:w-auto px-6 py-2.5 rounded-2xl bg-primary-container text-on-primary font-bold text-sm shadow-md hover:bg-primary transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                    >
+                      <span className="material-symbols-outlined text-[18px]">save</span>
+                      <span>{isSaving ? 'Guardando en Base de Datos...' : `Guardar Cambios de ${currentSedeData.nombre || 'Sede'}`}</span>
+                    </button>
+                  </div>
                 </div>
               </form>
             )}

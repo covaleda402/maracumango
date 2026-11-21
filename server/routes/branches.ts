@@ -31,7 +31,7 @@ router.get('/', async (_req: Request, res: Response) => {
         ) AS shifts
        FROM branches b
        LEFT JOIN shifts s ON s.branch_id = b.id AND s.is_active = TRUE
-       WHERE b.is_active = TRUE AND LOWER(b.name) NOT LIKE '%covaleda%' AND b.id != 'sede-1795151700722'
+       WHERE LOWER(b.name) NOT LIKE '%covaleda%' AND b.id != 'sede-1795151700722'
        GROUP BY b.id
        ORDER BY b.id ASC`
     );

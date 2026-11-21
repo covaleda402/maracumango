@@ -34,7 +34,7 @@ export type UserRole = 'customer' | 'worker' | 'admin';
 
 export type DeliveryMethod = 'domicilio' | 'recoger';
 
-export type PaymentMethod = 'nequi' | 'efectivo';
+export type PaymentMethod = 'nequi' | 'bancolombia' | 'transferencia' | 'efectivo';
 
 export type OrderStatus =
   | 'Pendiente'

@@ -9,6 +9,7 @@ import type {
   CategoryItem,
   Sede,
   AppUser,
+  PaymentMethod,
 } from '../types';
 import { apiService, getAuthToken } from '../services/apiService';
 import { storageService, INITIAL_CATEGORIES } from '../services/storageService';
@@ -83,7 +84,7 @@ interface AppContextType {
     deliveryMethod: 'domicilio' | 'recoger';
     deliveryAddress?: string;
     deliveryFee?: number;
-    paymentMethod: 'nequi' | 'efectivo';
+    paymentMethod: PaymentMethod;
     notes?: string;
   }) => Promise<Order>;
   acceptOrder: (orderId: string) => Promise<boolean>;
@@ -176,7 +177,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (loadedCats && loadedCats.length > 0) setCategories(loadedCats);
       if (loadedSedes && loadedSedes.length > 0) {
         const sanitizedSedes = loadedSedes.filter(
-          (s) => s.activa !== false && !s.nombre.toLowerCase().includes('covaleda') && s.id !== 'sede-1795151700722'
+          (s) => !s.nombre.toLowerCase().includes('covaleda') && s.id !== 'sede-1795151700722'
         );
         setSedes(sanitizedSedes.length > 0 ? sanitizedSedes : SEDES);
       }
@@ -254,7 +255,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     deliveryMethod: 'domicilio' | 'recoger';
     deliveryAddress?: string;
     deliveryFee?: number;
-    paymentMethod: 'nequi' | 'efectivo';
+    paymentMethod: PaymentMethod;
     notes?: string;
   }): Promise<Order> => {
     const targetSedeId = orderData.sedeId || selectedSedeId || 'sede-1';
