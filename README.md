@@ -18,12 +18,14 @@ Sistema web integral de comercio electrónico y gestión operativa para **Maracu
 ## 🚀 Funcionalidades Principales
 
 ### 🛍️ Menú y Experiencia del Cliente
-- **Catálogo Interactivo:** Exploración de productos organizados por categorías (Granizados, Micheladas, Helados Artesanales, etc.).
-- **Detalle y Personalización:** Selección de ingredientes, adiciones y notas especiales para la preparación.
-- **Carrito de Compras:** Gestión ágil de cantidades, resumen de subtotal y cálculo automático en tiempo real.
+- **Catálogo Interactivo y Sedes Dinámicas:** Exploración de productos por categorías con conteo y nombres dinámicos de sedes físicas sincronizadas en tiempo real en Neiva.
+- **Navegación Fluida y Botón Flotante:** Adición de productos con confirmación visual rápida (*"¡Agregado!"*) sin interrupciones molestas del carrito. Un botón flotante responsive (*"Hacer Pedido Ya"*) exhibe la cantidad y el subtotal acumulado permanentemente.
+- **Asesor Virtual / Smart FAQ ($0):** Asistente interactivo en la esquina inferior que responde al instante sobre direcciones, medios de pago, sedes abiertas/cerradas, domicilios y contacto directo a WhatsApp sin costos de API ni demoras.
 - **Registro Seguro y Habeas Data:** Creación de cuenta y login para clientes con aceptación explícita de Términos y Condiciones y Tratamiento de Datos Personales (Ley 1581 de 2012 de Colombia).
-- **Autocompletado de Pedidos:** Los datos de contacto y dirección de entrega se guardan en el perfil para autocompletar futuros pedidos.
-- **Registro de Pedidos y WhatsApp:** Envío de órdenes especificando modalidad (domicilio o retiro en punto de venta), sede de atención y método de pago (Efectivo, Nequi, Daviplata o Transferencia bancaria), generando la comanda verificada y el mensaje preformateado para WhatsApp.
+- **Recuperación Criptográfica de Contraseñas:** Soporte de restablecimiento seguro mediante código de 6 dígitos o enlace directo con Token Criptográfico (SHA-256 / 64 hex) enviado por correo electrónico.
+- **Autocompletado de Pedidos:** Los datos de contacto y dirección de entrega se guardan en el perfil para autocompletar futuros despachos.
+- **Medios de Pago por Transferencia y WhatsApp:** Pagos exclusivos por transferencia electrónica (**Nequi y Bancolombia**) con aviso visual obligatorio de comprobante. Al confirmar, genera la comanda en base de datos y el mensaje estructurado para WhatsApp con las instrucciones de pago.
+- **Protección de Sedes Cerradas:** Si una sede es desactivada administrativamente para el día, el sistema la marca como `🔴 Cerrado Hoy` y deshabilita su selección en el checkout.
 - **Canales Oficiales:** Enlaces directos a las redes sociales verificadas de Maracumango (Instagram y Facebook) en el pie de página.
 
 ### 🥤 Panel Operativo del Trabajador
@@ -39,11 +41,11 @@ Sistema web integral de comercio electrónico y gestión operativa para **Maracu
 ### 📊 Panel de Administración Central
 - **Dashboard y Métricas:** Indicadores clave de rendimiento, ventas totales, volumen de órdenes y pedidos activos.
 - **Aprobación Rápida de Pedidos:** Aprobación en un clic de órdenes entrantes (`PENDING_ADMIN` → `ACCEPTED`).
-- **Gestión Multi-Sede (+ Nueva Sede):** Creación, edición, activación/desactivación y eliminación de sedes físicas en Neiva (dirección, teléfono, WhatsApp, horario y estado operativo).
+- **Gestión Multi-Sede con Toggle Operativo:** Creación (`+ Nueva Sede`), edición de turnos, eliminación definitiva y botón directo de acción rápida: **`Desactivar Sede (Cerrar Hoy)`** / **`Activar Sede (Abrir Hoy)`** para festivos o mantenimiento.
 - **Gestión de Catálogo:** Creación, edición, activación/desactivación y eliminación lógica de productos, precios e imágenes.
 - **Gestión de Categorías e Ingredientes:** Organización taxonómica del menú y control de insumos disponibles.
-- **Gestión de Personal y Accesos:** Creación de usuarios con roles de Administrador o Trabajador, asignación de sedes y restablecimiento de credenciales seguras.
-- **Exportación de Reportes a Excel/CSV:** Descarga de reportes detallados de ventas con formato de moneda colombiana y codificación UTF-8 BOM.
+- **Gestión de Personal y Accesos:** Creación de usuarios con roles de Administrador o Trabajador, asignación de sedes y restablecimiento de credenciales seguras (con segregación estricta de cuentas de clientes).
+- **Exportación Profesional a Excel (.xlsx) y CSV:** Generación de reportes ejecutivos en formato nativo Excel (.xlsx) con diseño corporativo, métricas clave (KPIs de ventas, pedidos entregados, ticket promedio) y fórmulas matemáticas mediante `exceljs`, además de exportación tradicional CSV con UTF-8 BOM.
 - **Monitoreo del Sistema:** Diagnóstico de conexión y salud con la base de datos Neon PostgreSQL.
 
 ---
@@ -74,6 +76,8 @@ El sistema implementa control de acceso basado en roles (RBAC) con autenticació
   - [tsx](https://github.com/privatenumber/tsx) — Ejecución directa de TypeScript en el entorno de desarrollo.
   - [JSON Web Token (jsonwebtoken)](https://github.com/auth0/node-jsonwebtoken) — Generación y validación de tokens de sesión.
   - [bcryptjs](https://github.com/dcodeIO/bcrypt.js) — Cifrado seguro unidireccional de contraseñas.
+  - [exceljs](https://github.com/exceljs/exceljs) — Generación de hojas de cálculo ejecutivas (.xlsx) con KPIs y formatos monetarios.
+  - [nodemailer](https://nodemailer.com/) — Servicio transaccional de correo para restablecimiento de contraseñas con Resend / SMTP.
   - [cors](https://github.com/expressjs/cors) — Gestión segura de orígenes cruzados.
 
 - **Base de Datos:**
@@ -130,6 +134,11 @@ JWT_SECRET=tu_clave_secreta_jwt_para_firmar_sesiones
 
 # Origen permitido para CORS en desarrollo
 CORS_ORIGIN=http://localhost:5173
+
+# Configuración transaccional de correo para recuperación de cuentas (Opcional: Resend o SMTP)
+RESEND_API_KEY=re_tu_api_key_de_resend
+EMAIL_FROM="Maracumango Neiva" <onboarding@resend.dev>
+APP_URL=https://maracumango-theta.vercel.app
 ```
 
 > ⚠️ **IMPORTANTE DE SEGURIDAD:** Nunca compartas ni subas tu archivo `.env` a repositorios públicos de control de versiones. El archivo `.gitignore` ya está configurado para excluirlo automáticamente.
@@ -199,7 +208,7 @@ El proyecto está estructurado y optimizado para desplegarse fácilmente en **Ve
 | `npm run dev:client` | Inicia únicamente el servidor de desarrollo de Vite. |
 | `npm run dev:server` | Inicia únicamente el servidor backend con recarga automática (`tsx watch`). |
 | `npm run build` | Compila el proyecto TypeScript y genera el bundle estático de producción con Vite. |
-| `npm test` | Ejecuta la suite integral de 43 pruebas automatizadas de seguridad, limitación de intentos, recuperación de cuentas, RBAC y persistencia. |
+| `npm test` | Ejecuta la suite integral de 64 pruebas automatizadas en 13 suites (seguridad RBAC, BOLA/IDOR, bloqueo por fuerza bruta, recuperación criptográfica, toggle de sedes y pagos Bancolombia/Nequi) alcanzando 86.4% de cobertura. |
 | `npm run lint` | Ejecuta el análisis estático de código mediante `oxlint`. |
 | `npm run preview` | Previsualiza localmente la compilación de producción generada en `dist`. |
 | `npm run db:migrate` | Ejecuta las migraciones SQL en la base de datos configurada. |

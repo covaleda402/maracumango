@@ -9,10 +9,11 @@
 1. [Visión General del Sistema](#1-visión-general-del-sistema)
 2. [Guía para el Cliente](#2-guía-para-el-cliente)
    - [2.1 Navegación y Menú Digital](#21-navegación-y-menú-digital)
-   - [2.2 Personalización de Productos y Carrito](#22-personalización-de-productos-y-carrito)
+   - [2.2 Selección de Productos, Carrito Fluido y Botón Flotante](#22-selección-de-productos-carrito-fluido-y-botón-flotante)
    - [2.3 Registro de Cuenta y Habeas Data (Ley 1581 de 2012)](#23-registro-de-cuenta-y-habeas-data-ley-1581-de-2012)
-   - [2.4 Inicio de Sesión y Gestión de Perfil](#24-inicio-de-sesión-y-gestión-de-perfil)
-   - [2.5 Confirmación del Pedido y Envío por WhatsApp](#25-confirmación-del-pedido-y-envío-por-whatsapp)
+   - [2.4 Inicio de Sesión, Recuperación Criptográfica y Bloqueo de Seguridad](#24-inicio-de-sesión-recuperación-criptográfica-y-bloqueo-de-seguridad)
+   - [2.5 Confirmación del Pedido, Transferencias (Nequi / Bancolombia) y Envío por WhatsApp](#25-confirmación-del-pedido-transferencias-nequi--bancolombia-y-envío-por-whatsapp)
+   - [2.6 Asesor Virtual de Preguntas Frecuentes ($0)](#26-asesor-virtual-de-preguntas-frecuentes-0)
 3. [Guía para el Trabajador (Estación de Barra)](#3-guía-para-el-trabajador-estación-de-barra)
    - [3.1 Acceso al Panel Operativo](#31-acceso-al-panel-operativo)
    - [3.2 Cola de Comandas por Sede](#32-cola-de-comandas-por-sede)
@@ -47,11 +48,11 @@ El sistema opera con tres vistas interconectadas:
 - Puedes filtrar por tipos de postre o bebida (ej. *Copas*, *Granizados*, *Especiales*).
 - Cada tarjeta de producto muestra su nombre, descripción, precio en Pesos Colombianos (COP) e ingredientes base.
 
-### 2.2 Personalización de Productos y Carrito
-1. Haz clic en el botón **"Agregar"** o sobre el producto de tu preferencia.
-2. Se desplegará el panel para seleccionar adiciones o ingredientes adicionales (ej. *Lecherita*, *Salsa de Maracuyá*, *Tajín*, *Gomas*).
-3. Agrega notas especiales si tienes preferencias de preparación (ej. *"con poco dulce"*, *"sin sal"*).
-4. El botón flotante del carrito en la esquina superior derecha te mostrará en tiempo real la cantidad de productos seleccionados y el subtotal acumulado.
+### 2.2 Selección de Productos, Carrito Fluido y Botón Flotante
+1. **Navegación sin Interrupciones:** Al presionar **"Agregar"** en cualquier producto, la plataforma añade el ítem al pedido de forma silenciosa y fluida. El botón de la tarjeta confirma con una animación táctil verde/dorada **"¡Agregado!"** durante 1.2 segundos sin abrir ventanas invasivas que interrumpan tu exploración.
+2. **Control de Cantidades:** Puedes aumentar o disminuir la cantidad deseada directamente con los controles numéricos (+ / -) de cada producto antes de agregarlo.
+3. **Consulta de Ingredientes:** Cada producto cuenta con un botón **"Ingredientes"** para verificar los insumos naturales utilizados.
+4. **Botón Flotante ("Hacer Pedido Ya"):** Al tener al menos un producto en el pedido, aparecerá una píldora flotante ergonómica en la parte inferior de la pantalla. En celulares se posiciona al centro para un toque cómodo con el pulgar, mostrando la cantidad de productos, el valor total acumulado en Pesos Colombianos (COP) y un acceso directo para abrir el carrito cuando desees finalizar la compra.
 
 ### 2.3 Registro de Cuenta y Habeas Data (Ley 1581 de 2012)
 Para garantizar la entrega puntual de tus domicilios y evitar pedidos no verificados, **es necesario registrarse antes de confirmar tu compra**:
@@ -69,17 +70,16 @@ Para garantizar la entrega puntual de tus domicilios y evitar pedidos no verific
    - Puedes hacer clic en el enlace para leer el detalle completo: se explica que tus datos se usan **exclusivamente para la logística del pedido y facturación**, se protegen con cifrado SSL y puedes solicitar su actualización o supresión en cualquier momento.
 5. Presiona **"Crear Cuenta"**. Tu sesión se iniciará automáticamente.
 
-### 2.4 Inicio de Sesión, Recuperación de Contraseña y Bloqueo de Seguridad
+### 2.4 Inicio de Sesión, Recuperación Criptográfica y Bloqueo de Seguridad
 - Si ya tienes cuenta registrada, ingresa con tu correo y contraseña en la pestaña **"Iniciar Sesión"**.
-- **Límite de Intentos y Bloqueo por Fuerza Bruta:** Por motivos de seguridad, se permite un máximo de **5 intentos** fallidos de contraseña. Si se supera este límite, el sistema activa un **bloqueo temporal de 15 minutos** para proteger la cuenta contra accesos no autorizados.
-- **Recuperación de Contraseña:**
-  1. Si olvidaste tu contraseña, haz clic en el enlace **"¿Olvidaste tu contraseña?"** debajo del campo de contraseña.
-  2. Ingresa tu correo electrónico registrado y presiona **"Obtener Código de Recuperación"**.
-  3. El sistema generará un código de verificación de 6 dígitos con vigencia de **15 minutos**.
-  4. Ingresa el código recibido junto con tu nueva contraseña (mínimo 6 caracteres) y confirma el cambio.
-  5. ¡Listo! Tu contraseña quedará actualizada de inmediato y podrás ingresar a tu cuenta.
+- **Límite de Intentos y Bloqueo por Fuerza Bruta:** Por motivos de seguridad, se permite un máximo de **5 intentos** fallidos de contraseña. Si se supera este límite, el sistema activa un **bloqueo temporal de 15 minutos (HTTP 429)** para proteger la cuenta contra accesos no autorizados.
+- **Recuperación Segura de Contraseña:**
+  1. Si olvidaste tu contraseña, haz clic en el enlace **"¿Olvidaste tu contraseña?"** debajo del formulario.
+  2. Ingresa tu correo electrónico registrado y presiona **"Enviar enlace de recuperación"**.
+  3. El sistema envía un correo electrónico seguro con un **código de 6 dígitos** y un **enlace directo con Token Criptográfico (SHA-256 / 64 hex)** con vigencia de 15 minutos.
+  4. Puedes ingresar el código o simplemente hacer clic en el botón del correo recibido para redefinir tu contraseña de inmediato.
 - Una vez autenticado, verás en la barra superior tu saludo personalizado: *"Hola, [Tu Nombre]"*.
-- Al hacer clic sobre tu nombre, puedes actualizar tu número de celular o dirección predeterminada en cualquier momento.
+- Al hacer clic sobre tu nombre, puedes entrar a **"Mi Perfil"** y actualizar tu número de celular o dirección predeterminada en Neiva en cualquier momento.
 
 ### 2.5 Confirmación del Pedido y Envío por WhatsApp
 1. Abre tu carrito de compras haciendo clic en el icono de la bolsa.
@@ -150,20 +150,20 @@ Cada tarjeta de pedido muestra la lista de productos, adiciones personalizadas, 
   - `Listo para Entrega` (verde con botón directo de 1 clic para **"Entregar"**)
   - `Entregado` (gris con doble check)
 
-### 4.3 Gestión Multi-Sede y Eliminación Definitiva (`+ Nueva Sede`)
-El sistema permite expandir la presencia de Maracumango agregando nuevas sucursales en Neiva:
+### 4.3 Gestión Multi-Sede (+ Nueva Sede y Control Operativo Abrir/Cerrar Hoy)
+El sistema permite administrar todas las sucursales del negocio en Neiva de forma centralizada:
 
-1. Ingresa a la sección **"Configuración de Sedes"**.
-2. Haz clic en el botón naranja **"+ Nueva Sede"**.
-3. Diligencia los campos requeridos:
-   - **Nombre de la Sede** (ej. *Sede Barrio Las Granjas*)
-   - **Dirección física** (ej. *Carrera 5 # 28-12, Neiva*)
-   - **Teléfono de contacto** (ej. *315 987 6543*)
-   - **Línea de WhatsApp de atención** (número al que llegarán los pedidos)
-   - **Horario de atención** (ej. *Lunes a Domingo 2:00 PM - 10:00 PM*)
-4. Presiona **"Crear Sede"**.
-5. De inmediato, la nueva sede estará disponible en el selector de sedes para los clientes en el carrito de compras y en el panel de los trabajadores.
-6. **Eliminación Definitiva (Hard Delete):** Para evitar la acumulación de sedes de prueba o inactivas, el botón rojo **"Eliminar Sede Permanentemente"** borra por completo la sede y sus turnos asociados, desvinculando de forma segura los pedidos y usuarios para preservar los reportes financieros sin dejar registros obsoletos en la pantalla.
+1. **Creación de Nuevas Sedes (`+ Nueva Sede`):**
+   - Ingresa a la sección **"Configuración de Sedes"** y presiona **"+ Nueva Sede"**.
+   - Diligencia nombre, dirección física en Neiva, WhatsApp de atención y horarios de turnos.
+   - La nueva sede se sincroniza automáticamente con el menú del cliente, el carrito y el panel de trabajadores.
+2. **Control Operativo Inmediato (Cerrar / Abrir Hoy):**
+   - Cada sede cuenta con un botón de acción rápida para gestionar días festivos, descansos o contingencias:
+     - Si la sede está operando: Presiona **`[ ⏸️ Desactivar Sede (Cerrar Hoy) ]`**. Automáticamente la tienda y el carrito informarán que la sede está cerrada hoy y bloquearán la selección de pedidos para ese local.
+     - Si la sede estaba cerrada: Presiona **`[ ▶️ Activar Sede (Abrir Hoy) ]`** para reabrirla y habilitar la recepción de pedidos.
+   - En las pestañas de selección de sedes, el Administrador tiene visibilidad total con indicadores claros: `🟢 Abierta` o `🔴 Cerrada`.
+3. **Eliminación Definitiva (Hard Delete):**
+   - El botón rojo **"Eliminar Sede Permanentemente"** borra por completo la sede de la base de datos de manera atómica, desvinculando pedidos y trabajadores previos para preservar el historial financiero sin dejar registros basura.
 
 ### 4.4 Gestión de Catálogo (Productos, Categorías e Insumos)
 - **Crear Producto:** Ingresa nombre, categoría, precio de venta en COP, descripción, imagen y lista de ingredientes base.
@@ -176,21 +176,15 @@ El sistema permite expandir la presencia de Maracumango agregando nuevas sucursa
 - Asigna a cada trabajador su sede operativa y genera contraseñas seguras.
 - Si un colaborador cambia de sede o deja la empresa, su cuenta puede ser reasignada o desactivada al instante.
 
-### 4.6 Exportación de Ventas a Excel/CSV
-Para llevar la contabilidad y control financiero del negocio:
+### 4.6 Exportación de Ventas a Excel Profesional (.xlsx) y CSV
+Para el control contable y la toma de decisiones del negocio:
 
-1. Ve a la pestaña **Reportes / Pedidos**.
-2. Filtra por la sede que deseas consultar o selecciona *"Todas las sedes"*.
-3. Haz clic en el botón **"Exportar a Excel (CSV)"**.
-4. Se descargará un archivo `.csv` con codificación `UTF-8 BOM`, compatible al 100% con Microsoft Excel, Google Sheets o LibreOffice Calc, incluyendo:
-   - Número de comanda
-   - Fecha y hora exacta
-   - Sede de atención
-   - Nombre y teléfono del cliente
-   - Modalidad de entrega y dirección
-   - Método de pago
-   - Subtotal, tarifa de domicilio y total en COP
-   - Estado de la orden, quién la aprobó y quién la preparó.
+1. Ve a la pestaña **Reportes / Pedidos** en el panel administrativo.
+2. Filtra por la sede que deseas auditar o selecciona *"Todas las sedes"*.
+3. **Opciones de Descarga:**
+   - **Botón "Descargar Excel (.xlsx)":** Genera un libro de Microsoft Excel nativo con diseño corporativo elegante, cabeceras estilizadas en verde Maracumango, tarjetas con **KPIs ejecutivos** (Ventas Totales en COP, Cantidad de Pedidos Entregados, Ticket Promedio) y formato de moneda colombiana (`$ #,##0`).
+   - **Botón "Descargar CSV":** Archivo estructurado con codificación `UTF-8 BOM` para integración universal con bases de datos o software contable externo.
+4. El reporte detalla número de orden, fecha y hora exacta, sede, cliente, teléfono, dirección, método de pago (Nequi / Bancolombia), desglose financiero y el personal responsable de la aprobación y entrega.
 
 ---
 
