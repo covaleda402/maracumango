@@ -1677,7 +1677,7 @@ router5.get("/", async (req, res) => {
     let orders = [...devFallbackOrders];
     if (role === "worker") {
       const activeBranch = workerBranchId || "sede-1";
-      orders = orders.filter((o) => o.sedeId === activeBranch && o.status !== "PENDING_ADMIN" && o.status !== "CANCELLED");
+      orders = orders.filter((o) => o.sedeId === activeBranch && o.status !== "PENDING_ADMIN" && o.status !== "CANCELLED" && o.status !== "DELIVERED" && o.status !== "Entregado");
     } else if (role === "customer") {
       orders = orders.filter(
         (o) => Boolean(o.customerId) && o.customerId === req.user?.id || Boolean(o.customerEmail) && o.customerEmail?.toLowerCase() === req.user?.email?.toLowerCase()
@@ -1741,7 +1741,7 @@ router5.get("/", async (req, res) => {
       const branch = workerBranchId || "sede-1";
       params.push(branch);
       conditions.push(`o.branch_id = $${params.length}`);
-      conditions.push(`o.status_id NOT IN ('PENDING_ADMIN', 'CANCELLED', 'Cancelado')`);
+      conditions.push(`o.status_id NOT IN ('PENDING_ADMIN', 'CANCELLED', 'Cancelado', 'DELIVERED', 'Entregado')`);
     } else if (role === "customer") {
       params.push(req.user.id);
       params.push(req.user.email);

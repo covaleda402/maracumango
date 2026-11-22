@@ -27,13 +27,17 @@ export const WorkerPanelPage: React.FC = () => {
   // Business Rule:
   // 1. Worker only sees orders for their assigned operational sede.
   // 2. Worker CANNOT see orders in 'PENDING_ADMIN' / 'Pendiente' until admin confirms/approves them.
+  // 3. Worker CANNOT see cancelled orders.
+  // 4. Delivered orders (DELIVERED / Entregado) are immediately removed from the station view once completed to prevent queue saturation.
   const approvedSedeOrders = orders.filter((o) => {
     const isThisSede = o.sedeId === workerSedeId;
-    const isApproved =
+    const isActionable =
       o.status !== 'PENDING_ADMIN' &&
       o.status !== 'Pendiente' &&
-      o.status !== 'CANCELLED';
-    return isThisSede && isApproved;
+      o.status !== 'CANCELLED' &&
+      o.status !== 'DELIVERED' &&
+      o.status !== 'Entregado';
+    return isThisSede && isActionable;
   });
 
   const approvedCount = approvedSedeOrders.filter(
@@ -47,9 +51,6 @@ export const WorkerPanelPage: React.FC = () => {
   ).length;
   const readyCount = approvedSedeOrders.filter(
     (o) => o.status === 'Listo' || o.status === 'READY'
-  ).length;
-  const deliveredCount = approvedSedeOrders.filter(
-    (o) => o.status === 'Entregado' || o.status === 'DELIVERED'
   ).length;
 
   const filteredOrders =
@@ -67,9 +68,6 @@ export const WorkerPanelPage: React.FC = () => {
           }
           if (selectedStatusFilter === 'Listo') {
             return o.status === 'Listo' || o.status === 'READY';
-          }
-          if (selectedStatusFilter === 'Entregado') {
-            return o.status === 'Entregado' || o.status === 'DELIVERED';
           }
           return o.status === selectedStatusFilter;
         });
@@ -300,18 +298,7 @@ export const WorkerPanelPage: React.FC = () => {
                   <span className="font-label-sm uppercase">Listos</span>
                 </button>
 
-                <button
-                  onClick={() => setSelectedStatusFilter('Entregado')}
-                  className={`flex items-center gap-2 px-3.5 py-2 rounded-2xl transition-all border ${
-                    selectedStatusFilter === 'Entregado'
-                      ? 'bg-on-surface text-surface font-bold border-on-surface'
-                      : 'bg-surface-container-low text-on-surface-variant border-outline-variant/20 hover:bg-surface-container'
-                  }`}
-                >
-                  <span className="material-symbols-outlined text-[18px]">task_alt</span>
-                  <span className="font-headline-sm">{deliveredCount}</span>
-                  <span className="font-label-sm uppercase">Entregados</span>
-                </button>
+
               </div>
             </div>
           </section>
@@ -331,7 +318,7 @@ export const WorkerPanelPage: React.FC = () => {
                     : 'bg-surface-container-low text-on-surface-variant hover:bg-surface-container'
                 }`}
               >
-                Todos los Aprobados
+                Todos los Activos ({approvedSedeOrders.length})
               </button>
               <button
                 onClick={() => setSelectedStatusFilter('Mis Preparaciones')}
@@ -374,16 +361,7 @@ export const WorkerPanelPage: React.FC = () => {
               >
                 Listos ({readyCount})
               </button>
-              <button
-                onClick={() => setSelectedStatusFilter('Entregado')}
-                className={`px-3 py-1.5 rounded-full text-xs font-semibold border ${
-                  selectedStatusFilter === 'Entregado'
-                    ? 'bg-on-surface text-surface'
-                    : 'bg-surface-container-low text-on-surface-variant hover:bg-surface-container'
-                }`}
-              >
-                Entregados ({deliveredCount})
-              </button>
+
             </div>
           </div>
 

@@ -26,7 +26,7 @@ router.get('/', async (req: Request, res: Response) => {
     let orders = [...devFallbackOrders];
     if (role === 'worker') {
       const activeBranch = workerBranchId || 'sede-1';
-      orders = orders.filter((o) => o.sedeId === activeBranch && (o.status as string) !== 'PENDING_ADMIN' && (o.status as string) !== 'CANCELLED');
+      orders = orders.filter((o) => o.sedeId === activeBranch && (o.status as string) !== 'PENDING_ADMIN' && (o.status as string) !== 'CANCELLED' && (o.status as string) !== 'DELIVERED' && (o.status as string) !== 'Entregado');
     } else if (role === 'customer') {
       orders = orders.filter(
         (o) =>
@@ -99,7 +99,8 @@ router.get('/', async (req: Request, res: Response) => {
       const branch = workerBranchId || 'sede-1';
       params.push(branch);
       conditions.push(`o.branch_id = $${params.length}`);
-      conditions.push(`o.status_id NOT IN ('PENDING_ADMIN', 'CANCELLED', 'Cancelado')`);
+      // 4. Worker CANNOT see delivered orders (eliminated from view once completed to prevent queue saturation)
+      conditions.push(`o.status_id NOT IN ('PENDING_ADMIN', 'CANCELLED', 'Cancelado', 'DELIVERED', 'Entregado')`);
     } else if (role === 'customer') {
       // Customer can ONLY see their own orders (BOLA/IDOR protection)
       params.push(req.user.id);
