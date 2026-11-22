@@ -43,9 +43,6 @@ export const WorkerPanelPage: React.FC = () => {
   const approvedCount = approvedSedeOrders.filter(
     (o) => o.status === 'ACCEPTED' || (o.status as string) === 'Aceptado'
   ).length;
-  const preparingCount = approvedSedeOrders.filter(
-    (o) => o.status === 'PREPARING' || o.status === 'En preparación'
-  ).length;
   const myPreparingCount = approvedSedeOrders.filter(
     (o) => (o.status === 'PREPARING' || o.status === 'En preparación') && o.preparedBy === currentUser?.id
   ).length;
@@ -257,48 +254,14 @@ export const WorkerPanelPage: React.FC = () => {
                 </div>
               </div>
 
-              {/* Status Counters (Workers only see approved orders) */}
+              {/* Resumen de Cola Activa en Sede */}
               <div className="flex items-center gap-space-xs flex-wrap">
-                <button
-                  onClick={() => setSelectedStatusFilter('Por Preparar')}
-                  className={`flex items-center gap-2 px-3.5 py-2 rounded-2xl transition-all border ${
-                    selectedStatusFilter === 'Por Preparar'
-                      ? 'bg-secondary-container text-on-secondary-container font-bold border-secondary'
-                      : 'bg-surface-container-low text-on-surface-variant border-outline-variant/20 hover:bg-surface-container'
-                  }`}
-                >
-                  <span className="material-symbols-outlined text-[18px] text-secondary">assignment</span>
-                  <span className="font-headline-sm">{approvedCount}</span>
-                  <span className="font-label-sm uppercase">Por Preparar</span>
-                </button>
-
-                <button
-                  onClick={() => setSelectedStatusFilter('En preparación')}
-                  className={`flex items-center gap-2 px-3.5 py-2 rounded-2xl transition-all border ${
-                    selectedStatusFilter === 'En preparación'
-                      ? 'bg-primary-container text-on-primary font-bold border-primary-container'
-                      : 'bg-surface-container-low text-on-surface-variant border-outline-variant/20 hover:bg-surface-container'
-                  }`}
-                >
-                  <span className="material-symbols-outlined text-[18px] text-primary animate-spin">autorenew</span>
-                  <span className="font-headline-sm">{preparingCount}</span>
-                  <span className="font-label-sm uppercase">En Preparación</span>
-                </button>
-
-                <button
-                  onClick={() => setSelectedStatusFilter('Listo')}
-                  className={`flex items-center gap-2 px-3.5 py-2 rounded-2xl transition-all border ${
-                    selectedStatusFilter === 'Listo'
-                      ? 'bg-tertiary-container text-on-tertiary font-bold border-tertiary-container'
-                      : 'bg-surface-container-low text-on-surface-variant border-outline-variant/20 hover:bg-surface-container'
-                  }`}
-                >
-                  <span className="material-symbols-outlined text-[18px] text-tertiary">check_circle</span>
-                  <span className="font-headline-sm">{readyCount}</span>
-                  <span className="font-label-sm uppercase">Listos</span>
-                </button>
-
-
+                <div className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-surface-container-low border border-outline-variant/25 text-xs">
+                  <span className="w-2.5 h-2.5 rounded-full bg-primary animate-pulse"></span>
+                  <span className="font-semibold text-on-surface">
+                    {approvedSedeOrders.length === 1 ? '1 Pedido en cola' : `${approvedSedeOrders.length} Pedidos en cola`}
+                  </span>
+                </div>
               </div>
             </div>
           </section>
@@ -312,19 +275,30 @@ export const WorkerPanelPage: React.FC = () => {
             <div className="flex items-center gap-2 flex-wrap">
               <button
                 onClick={() => setSelectedStatusFilter('Todos')}
-                className={`px-3 py-1.5 rounded-full text-xs font-semibold border ${
+                className={`px-3.5 py-1.5 rounded-full text-xs font-semibold border transition-all ${
                   selectedStatusFilter === 'Todos'
-                    ? 'bg-on-surface text-surface'
+                    ? 'bg-on-surface text-surface shadow-xs'
                     : 'bg-surface-container-low text-on-surface-variant hover:bg-surface-container'
                 }`}
               >
-                Todos los Activos ({approvedSedeOrders.length})
+                Todos ({approvedSedeOrders.length})
+              </button>
+              <button
+                onClick={() => setSelectedStatusFilter('Por Preparar')}
+                className={`px-3.5 py-1.5 rounded-full text-xs font-semibold border transition-all flex items-center gap-1.5 ${
+                  selectedStatusFilter === 'Por Preparar'
+                    ? 'bg-secondary-container text-on-secondary-container font-bold shadow-xs'
+                    : 'bg-surface-container-low text-on-surface-variant hover:bg-surface-container'
+                }`}
+              >
+                <span className="material-symbols-outlined text-[15px] text-secondary">assignment</span>
+                <span>Por Preparar ({approvedCount})</span>
               </button>
               <button
                 onClick={() => setSelectedStatusFilter('Mis Preparaciones')}
-                className={`px-3 py-1.5 rounded-full text-xs font-semibold border flex items-center gap-1 ${
+                className={`px-3.5 py-1.5 rounded-full text-xs font-semibold border transition-all flex items-center gap-1.5 ${
                   selectedStatusFilter === 'Mis Preparaciones'
-                    ? 'bg-primary-container text-on-primary font-bold shadow-sm'
+                    ? 'bg-primary-container text-on-primary font-bold shadow-xs'
                     : 'bg-surface-container-low text-on-surface-variant hover:bg-surface-container'
                 }`}
               >
@@ -332,36 +306,16 @@ export const WorkerPanelPage: React.FC = () => {
                 <span>Mis Preparaciones ({myPreparingCount})</span>
               </button>
               <button
-                onClick={() => setSelectedStatusFilter('Por Preparar')}
-                className={`px-3 py-1.5 rounded-full text-xs font-semibold border ${
-                  selectedStatusFilter === 'Por Preparar'
-                    ? 'bg-secondary-container text-on-secondary-container'
-                    : 'bg-surface-container-low text-on-surface-variant hover:bg-surface-container'
-                }`}
-              >
-                Por Preparar ({approvedCount})
-              </button>
-              <button
-                onClick={() => setSelectedStatusFilter('En preparación')}
-                className={`px-3 py-1.5 rounded-full text-xs font-semibold border ${
-                  selectedStatusFilter === 'En preparación'
-                    ? 'bg-primary-container text-on-primary'
-                    : 'bg-surface-container-low text-on-surface-variant hover:bg-surface-container'
-                }`}
-              >
-                En Preparación ({preparingCount})
-              </button>
-              <button
                 onClick={() => setSelectedStatusFilter('Listo')}
-                className={`px-3 py-1.5 rounded-full text-xs font-semibold border ${
+                className={`px-3.5 py-1.5 rounded-full text-xs font-semibold border transition-all flex items-center gap-1.5 ${
                   selectedStatusFilter === 'Listo'
-                    ? 'bg-tertiary-container text-on-tertiary'
+                    ? 'bg-tertiary-container text-on-tertiary font-bold shadow-xs'
                     : 'bg-surface-container-low text-on-surface-variant hover:bg-surface-container'
                 }`}
               >
-                Listos ({readyCount})
+                <span className="material-symbols-outlined text-[15px] text-tertiary">check_circle</span>
+                <span>Listos ({readyCount})</span>
               </button>
-
             </div>
           </div>
 
